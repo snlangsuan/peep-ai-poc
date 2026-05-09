@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Peep AI - Intelligence at your fingertips</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Onboarding Modal -->
+        <div id="onboarding-modal" class="modal-overlay">
+            <div class="modal-content glass-card">
+                <h2>Welcome to Peep AI</h2>
+                <p>Please enter your name to get started</p>
+                <div class="input-group">
+                    <input type="text" id="onboarding-name" placeholder="Your display name">
+                </div>
+                <button id="get-started-btn" class="primary-btn">Get Started</button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <main id="main-content">
+            <!-- Home Section -->
+            <section id="home-section" class="content-section active">
+                <header class="page-header">
+                    <div class="user-info">
+                        <div class="avatar-ring">
+                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=d3cimo" alt="Avatar" id="user-avatar">
+                        </div>
+                        <div>
+                            <h1 class="greeting">Hello, <span id="display-name">User</span></h1>
+                            <p class="subtitle">Welcome back to your workspace</p>
+                        </div>
+                    </div>
+                    <div class="credit-badge">
+                        <i data-lucide="zap" class="zap-icon"></i>
+                        <span id="credit-count">---</span> Credits
+                    </div>
+                </header>
+
+                <!-- Calendar View -->
+                <div class="glass-card calendar-container">
+                    <div class="calendar-header">
+                        <button id="prev-month"><i data-lucide="chevron-left"></i></button>
+                        <h2 id="current-month">May 2026</h2>
+                        <button id="next-month"><i data-lucide="chevron-right"></i></button>
+                    </div>
+                    <div class="calendar-grid" id="calendar-grid">
+                        <!-- Calendar days will be generated here -->
+                    </div>
+                </div>
+
+                <div class="section-label">
+                    <h3>Upcoming Schedules</h3>
+                    <button class="text-btn">View All</button>
+                </div>
+
+                <div id="upcoming-schedules" class="schedule-list">
+                    <!-- Schedules will be loaded here -->
+                    <div class="empty-state">
+                        <i data-lucide="calendar-off"></i>
+                        <p>No upcoming schedules</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Chat Section -->
+            <section id="chat-section" class="content-section">
+                <!-- Chat List View -->
+                <div id="chat-list-view" class="sub-section active">
+                    <header class="page-header">
+                        <h1>Messages</h1>
+                    </header>
+                    <div class="search-bar glass-card">
+                        <i data-lucide="search"></i>
+                        <input type="text" placeholder="Search messages...">
+                    </div>
+                    <div class="contact-list">
+                        <div class="contact-item pinned" id="ai-assistant-contact">
+                            <div class="contact-avatar bot">
+                                <i data-lucide="bot"></i>
+                            </div>
+                            <div class="contact-info">
+                                <div class="contact-name-row">
+                                    <h3>AI Assistant</h3>
+                                    <span class="time">Now</span>
+                                </div>
+                                <p class="last-message">Tap to chat with your AI workspace assistant</p>
+                            </div>
+                            <i data-lucide="pin" class="pin-icon"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actual Chat View -->
+                <div id="chat-conversation-view" class="sub-section">
+                    <header class="chat-header glass-blur">
+                        <button id="back-to-list" class="icon-btn">
+                            <i data-lucide="chevron-left"></i>
+                        </button>
+                        <div class="chat-bot-info">
+                            <div class="bot-avatar">
+                                <i data-lucide="bot"></i>
+                            </div>
+                            <div>
+                                <h2>AI Assistant</h2>
+                                <span class="status-online">Online</span>
+                            </div>
+                        </div>
+                        <div class="chat-header-actions">
+                            <div class="mini-credit-badge">
+                                <i data-lucide="zap" class="zap-icon"></i>
+                                <span id="chat-credit-count">---</span>
+                                <span class="unit">Credits</span>
+                            </div>
+                            <button id="toggle-actions-btn" class="icon-btn">
+                                <i data-lucide="layout-grid"></i>
+                            </button>
+                        </div>
+                    </header>
+
+                    <!-- Quick Actions Panel -->
+                    <div id="chat-action-panel" class="chat-action-panel">
+                        <div class="action-items-grid">
+                            <button class="action-btn" data-action="expenses" data-query="List my expenses">
+                                <div class="action-icon expense"><i data-lucide="receipt"></i></div>
+                                <span>Expense</span>
+                            </button>
+                            <button class="action-btn" data-action="schedules" data-query="Show my schedules">
+                                <div class="action-icon schedule"><i data-lucide="calendar"></i></div>
+                                <span>Schedule</span>
+                            </button>
+                            <button class="action-btn" data-action="overall" data-query="Give me a summary">
+                                <div class="action-icon summary"><i data-lucide="pie-chart"></i></div>
+                                <span>Summary</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="chat-messages" class="chat-messages">
+                        <!-- Messages loaded here -->
+                    </div>
+
+                    <div class="chat-input-container glass-blur">
+                        <div class="input-wrapper">
+                            <textarea id="message-input" placeholder="Ask me anything..." rows="1"></textarea>
+                            <button id="send-btn" class="send-button">
+                                <i data-lucide="send"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Bottom Navigation -->
+        <nav class="bottom-nav">
+            <button class="nav-item active" data-target="home">
+                <i data-lucide="home"></i>
+                <span>Home</span>
+            </button>
+            <button class="nav-item" data-target="chat">
+                <i data-lucide="message-square"></i>
+                <span>Chat</span>
+            </button>
+            <button class="nav-item" data-target="cloud">
+                <i data-lucide="cloud"></i>
+                <span>Cloud</span>
+            </button>
+            <button class="nav-item" data-target="community">
+                <i data-lucide="users"></i>
+                <span>Community</span>
+            </button>
+            <button class="nav-item" data-target="settings">
+                <i data-lucide="settings"></i>
+                <span>Setting</span>
+            </button>
+        </nav>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
