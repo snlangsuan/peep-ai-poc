@@ -112,7 +112,7 @@ jobs:
                 --name ${{ env.CONTAINER_NAME }} \
                 --restart always \
                 --add-host=host.docker.internal:host-gateway \
-                -p 8000:8000 \
+                -p 8500:8000 \
                 --health-cmd="curl -f http://localhost:8000/health || exit 1" \
                 --health-interval=30s \
                 --health-timeout=10s \
