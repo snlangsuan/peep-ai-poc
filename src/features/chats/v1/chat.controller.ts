@@ -36,7 +36,7 @@ export class ChatController {
       return c.json<TChatResponse>(chatResponseSchema.parse(result), 201)
     } catch (error) {
       if (error instanceof Error && error.message === 'OUT_OF_CREDITS') {
-        throw new InsufficientPermissionException('เครดิตของคุณหมดแล้ว กรุณาเติมเครดิตเพื่อใช้งานต่อ')
+        throw new InsufficientPermissionException('ขออภัยครับ ดูเหมือนเครดิตของคุณจะหมดแล้ว 😊 สามารถเติมเครดิตเพื่อใช้งาน Peep AI ต่อได้ทันทีเลยนะครับ')
       }
       throw error
     }
@@ -124,7 +124,7 @@ export class ChatController {
       return c.json({ success: true }, 201)
     } catch (error) {
       if (error instanceof Error && error.message === 'OUT_OF_CREDITS') {
-        throw new InsufficientPermissionException('เครดิตของคุณหมดแล้ว กรุณาเติมเครดิตเพื่อใช้งานต่อ')
+        throw new InsufficientPermissionException('ขออภัยครับ ดูเหมือนเครดิตของคุณจะหมดแล้ว 😊 สามารถเติมเครดิตเพื่อใช้งาน Peep AI ต่อได้ทันทีเลยนะครับ')
       }
       throw error
     }
@@ -144,7 +144,7 @@ export class ChatController {
       return c.json({ success: true }, 201)
     } catch (error) {
       if (error instanceof Error && error.message === 'OUT_OF_CREDITS') {
-        throw new InsufficientPermissionException('เครดิตของคุณหมดแล้ว กรุณาเติมเครดิตเพื่อใช้งานต่อ ครับ')
+        throw new InsufficientPermissionException('ขออภัยครับ ดูเหมือนเครดิตของคุณจะหมดแล้ว 😊 สามารถเติมเครดิตเพื่อใช้งาน Peep AI ต่อได้ทันทีเลยนะครับ')
       }
       throw error
     }
@@ -164,7 +164,7 @@ export class ChatController {
       return c.json({ success: true }, 201)
     } catch (error) {
       if (error instanceof Error && error.message === 'OUT_OF_CREDITS') {
-        throw new InsufficientPermissionException('เครดิตของคุณหมดแล้ว กรุณาเติมเครดิตเพื่อใช้งานต่อ')
+        throw new InsufficientPermissionException('ขออภัยครับ ดูเหมือนเครดิตของคุณจะหมดแล้ว 😊 สามารถเติมเครดิตเพื่อใช้งาน Peep AI ต่อได้ทันทีเลยนะครับ')
       }
       throw error
     }

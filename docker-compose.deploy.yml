@@ -1,12 +1,8 @@
 services:
   api:
-    build:
-      context: .
-      dockerfile: deploy/local.Dockerfile
+    image: ghcr.io/snlangsuan/peep-ai-api:latest
     container_name: peep-ai-api
-    volumes:
-      - .:/app
-      - /app/node_modules
+    restart: always
     env_file:
       - .env.dev
     ports:
@@ -15,6 +11,7 @@ services:
   nginx:
     image: nginx:alpine
     container_name: peep-ai-nginx
+    restart: always
     ports:
       - "80:80"
     volumes:

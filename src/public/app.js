@@ -164,7 +164,7 @@ async function fetchChatHistory() {
         }
     } catch (err) {
         console.error('Failed to fetch chat history:', err);
-        chatMessages.innerHTML = '<div class="empty-state">Failed to load history</div>';
+        chatMessages.innerHTML = '<div class="empty-state">ขออภัยครับ โหลดประวัติแชทไม่สำเร็จ รบกวนลองใหม่อีกครั้งนะครับ 🙏</div>';
     } finally {
         state.isTyping = false;
         setTimeout(scrollToBottom, 100);
@@ -333,6 +333,45 @@ function renderSchedules(items) {
 }
 
 let sseConnectionActive = false;
+let sseRetryCount = 0;
+const MAX_RETRY_DELAY = 30000;
+
+function handleSSEData(event, rawData) {
+    try {
+        const data = JSON.parse(rawData);
+        switch (event) {
+            case 'message':
+                if (data.sender_id === 'bot') {
+                    hideTypingIndicator();
+                    addMessage(data.message, 'bot');
+                    state.isTyping = false;
+                }
+                break;
+            case 'credit_balance':
+                updateCredits(data.credits);
+                break;
+            case 'ping':
+                console.log('SSE Ping received');
+                break;
+        }
+    } catch (e) {
+        console.warn('Failed to parse SSE data:', rawData);
+    }
+}
+
+function processSSELines(lines, context) {
+    for (const line of lines) {
+        if (line.startsWith('event: ')) {
+            context.currentEvent = line.slice(7).trim();
+        } else if (line.startsWith('data: ')) {
+            const rawData = line.slice(6).trim();
+            if (rawData) {
+                handleSSEData(context.currentEvent, rawData);
+                context.currentEvent = 'message'; // Reset
+            }
+        }
+    }
+}
 
 async function setupSSE() {
     if (sseConnectionActive) return;
@@ -343,12 +382,20 @@ async function setupSSE() {
             headers: { 'x-api-key': state.user_id }
         });
 
+        if (response.status === 401 || response.status === 403) {
+            console.error('SSE Authentication failed. Stopping retry.');
+            sseConnectionActive = false;
+            return;
+        }
+
         if (!response.ok) throw new Error('SSE connection failed');
+
+        sseRetryCount = 0; // Reset retry count on successful connection
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        let currentEvent = 'message';
+        const context = { currentEvent: 'message' };
 
         while (true) {
             const { value, done } = await reader.read();
@@ -361,39 +408,19 @@ async function setupSSE() {
             const lines = buffer.split('\n');
             buffer = lines.pop();
 
-            for (const line of lines) {
-                if (line.startsWith('event: ')) {
-                    currentEvent = line.slice(7).trim();
-                } else if (line.startsWith('data: ')) {
-                    const rawData = line.slice(6).trim();
-                    if (!rawData) continue;
-
-                    try {
-                        const data = JSON.parse(rawData);
-                        if (currentEvent === 'message') {
-                            if (data.sender_id === 'bot') {
-                                hideTypingIndicator();
-                                addMessage(data.message, 'bot');
-                                state.isTyping = false;
-                            }
-                        } else if (currentEvent === 'credit_balance') {
-                            updateCredits(data.credits);
-                        } else if (currentEvent === 'ping') {
-                            console.log('SSE Ping received');
-                        }
-                    } catch (e) {
-                        console.warn('Failed to parse SSE data:', rawData);
-                    }
-                    currentEvent = 'message';
-                }
-            }
+            processSSELines(lines, context);
         }
     } catch (err) {
         console.error('SSE Error:', err);
     } finally {
         sseConnectionActive = false;
-        console.log('SSE Reconnecting in 3s...');
-        setTimeout(setupSSE, 3000);
+        
+        // Exponential backoff: 1s, 2s, 4s, 8s, ... up to 30s
+        const delay = Math.min(1000 * Math.pow(2, sseRetryCount), MAX_RETRY_DELAY);
+        sseRetryCount++;
+        
+        console.log(`SSE Reconnecting in ${delay}ms...`);
+        setTimeout(setupSSE, delay);
     }
 }
 
@@ -434,12 +461,12 @@ async function sendMessage() {
         if (!response.ok) {
             hideTypingIndicator();
             const error = await response.json();
-            addMessage(error.message || 'Error', 'bot');
+            addMessage(error.message || 'ขออภัยครับ มีบางอย่างผิดพลาด รบกวนลองใหม่อีกครั้งนะครับ', 'bot');
             state.isTyping = false;
         }
     } catch (err) {
         hideTypingIndicator();
-        addMessage('Connection error.', 'bot');
+        addMessage('ขออภัยครับ การเชื่อมต่อติดขัดเล็กน้อย รบกวนตรวจสอบอินเทอร์เน็ตแล้วลองใหม่อีกครั้งนะครับ', 'bot');
         state.isTyping = false;
     }
 }
@@ -525,11 +552,11 @@ async function handleChatAction(type) {
 
         if (!response.ok) {
             const error = await response.json();
-            addMessage(error.message || 'Failed to trigger action', 'bot');
+            addMessage(error.message || 'ขออภัยครับ ไม่สามารถเรียกใช้งานคำสั่งได้ในขณะนี้ 🙏', 'bot');
         }
     } catch (err) {
         console.error('Action failed:', err);
-        addMessage('Connection error while performing action.', 'bot');
+        addMessage('ขออภัยครับ พบปัญหาการเชื่อมต่อขณะดำเนินการ รบกวนลองใหม่อีกครั้งนะครับ', 'bot');
     }
 }
 

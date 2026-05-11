@@ -21,5 +21,5 @@ export const envSchema = z.object({
   GOOGLE_AUTH_PRIVATE_KEY: z.string(),
   GOOGLE_GEMINI_CHAT_MODEL: z.string().default('gemini-3.1-flash-lite'),
   GOOGLE_GEMINI_EXTRACT_MODEL: z.string().default('gemini-2.5-flash-lite'),
-  FIREBASE_DATABASE_URL: z.string().url().optional(),
+  FIREBASE_DATABASE_URL: z.url().optional(),
 })

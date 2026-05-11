@@ -163,37 +163,40 @@ export class BrainService {
     args: IExpenseArgs,
     user_id: string,
   ): Promise<TExpenseResponse | TExpenseListResponse | null> {
-    if (args.action === 'create') {
-      const { action, ...data } = args
-      return this.expenseService.create(user_id, {
-        subject: data.subject || 'Expense',
-        amount: data.amount || 0,
-        currency: data.currency || 'THB',
-        location: data.location ?? null,
-        category: data.category ?? null,
-        date: data.date || getLocalTime().format('YYYY-MM-DD'),
-      } as unknown as TCreateExpense)
+    switch (args.action) {
+      case 'create':
+        return this.handleCreateExpense(user_id, args)
+      case 'update':
+        return this.handleUpdateExpense(user_id, args)
+      default:
+        return this.handleListExpenses(user_id, args)
     }
+  }
 
-    if (args.action === 'update') {
-      const { id, action, ...data } = args
-      const updateData: any = {}
-      if (data.subject) updateData.subject = data.subject
-      if (data.amount) updateData.amount = data.amount
-      if (data.currency) updateData.currency = data.currency
-      if (data.location !== undefined) updateData.location = data.location ?? null
-      if (data.category !== undefined) updateData.category = data.category ?? null
-      if (data.date) updateData.date = data.date
+  private async handleCreateExpense(user_id: string, data: IExpenseArgs) {
+    return this.expenseService.create(user_id, {
+      subject: data.subject || 'Expense',
+      amount: data.amount || 0,
+      currency: data.currency || 'THB',
+      location: data.location ?? null,
+      category: data.category ?? null,
+      date: data.date || getLocalTime().format('YYYY-MM-DD'),
+    } as unknown as TCreateExpense)
+  }
 
-      return this.expenseService.update(user_id, id as string, updateData as Partial<TCreateExpense>)
-    }
+  private async handleUpdateExpense(user_id: string, args: IExpenseArgs) {
+    const { id, action, ...data } = args
+    const updateData = Object.fromEntries(Object.entries(data).filter(([_, v]) => v !== undefined))
+    return this.expenseService.update(user_id, id as string, updateData as Partial<TCreateExpense>)
+  }
 
-    const { action, ...filter } = args
+  private async handleListExpenses(user_id: string, filter: IExpenseArgs) {
+    const { action, ...rest } = filter
     return this.expenseService.list(user_id, {
       page: 1,
       limit: 10,
       desc: true,
-      ...filter,
+      ...rest,
     } as unknown as TExpenseListFilter)
   }
 
@@ -201,35 +204,39 @@ export class BrainService {
     args: IScheduleArgs,
     user_id: string,
   ): Promise<TScheduleResponse | TScheduleListResponse | null> {
-    if (args.action === 'create') {
-      const { action, ...data } = args
-      return this.scheduleService.create(user_id, {
-        title: data.title || 'New Schedule',
-        date: data.date || getLocalTime().format('YYYY-MM-DD'),
-        time: data.time || null,
-        location: data.location || null,
-        remind_before_minutes: data.remind_before_minutes ?? 15,
-      } as unknown as TCreateSchedule)
+    switch (args.action) {
+      case 'create':
+        return this.handleCreateSchedule(user_id, args)
+      case 'update':
+        return this.handleUpdateSchedule(user_id, args)
+      default:
+        return this.handleListSchedules(user_id, args)
     }
+  }
 
-    if (args.action === 'update') {
-      const { id, action, ...data } = args
-      const updateData: any = {}
-      if (data.title) updateData.title = data.title
-      if (data.date) updateData.date = data.date
-      if (data.time !== undefined) updateData.time = data.time
-      if (data.location !== undefined) updateData.location = data.location ?? null
-      if (data.remind_before_minutes !== undefined) updateData.remind_before_minutes = data.remind_before_minutes
+  private async handleCreateSchedule(user_id: string, data: IScheduleArgs) {
+    return this.scheduleService.create(user_id, {
+      title: data.title || 'New Schedule',
+      date: data.date || getLocalTime().format('YYYY-MM-DD'),
+      time: data.time || null,
+      location: data.location || null,
+      remind_before_minutes: data.remind_before_minutes ?? 15,
+    } as unknown as TCreateSchedule)
+  }
 
-      return this.scheduleService.update(user_id, id as string, updateData as Partial<TCreateSchedule>)
-    }
+  private async handleUpdateSchedule(user_id: string, args: IScheduleArgs) {
+    const { id, action, ...data } = args
+    const updateData = Object.fromEntries(Object.entries(data).filter(([_, v]) => v !== undefined))
+    return this.scheduleService.update(user_id, id as string, updateData as Partial<TCreateSchedule>)
+  }
 
-    const { action, ...filter } = args
+  private async handleListSchedules(user_id: string, filter: IScheduleArgs) {
+    const { action, ...rest } = filter
     return this.scheduleService.list(user_id, {
       page: 1,
       limit: 10,
       desc: true,
-      ...filter,
+      ...rest,
     } as unknown as TScheduleListFilter)
   }
 
@@ -350,7 +357,7 @@ GUIDELINES:
 
       if (currentCredits <= 0) {
         await this.chatRepository.send(user_id, 'bot', {
-          message: 'ขออภัยครับ เครดิตในการใช้งานของคุณหมดแล้ว (คงเหลือ 0) กรุณาเติมเครดิตเพื่อใช้งานต่อครับ',
+          message: 'ขออภัยครับ ดูเหมือนเครดิตของคุณจะหมดแล้ว 😊 สามารถเติมเครดิตเพื่อใช้งาน Peep AI ต่อได้ทันทีเลยนะครับ',
         })
         return
       }
@@ -407,7 +414,7 @@ GUIDELINES:
       console.log(error)
       logger.error({ error }, 'Error in BrainService processing')
       await this.chatRepository.send(user_id, 'bot', {
-        message: 'ขออภัยครับ เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้งครับ',
+        message: 'ขออภัยด้วยนะครับ พอดีเกิดข้อผิดพลาดนิดหน่อยระหว่างประมวลผล รบกวนคุณลองพิมพ์ข้อความใหม่อีกครั้งนะครับ 🙏',
       })
     }
   }
