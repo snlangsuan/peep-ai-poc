@@ -28,6 +28,7 @@ COPY --from=builder /app/src/public ./src/public
 # native modules or peer dependencies, you might still need node_modules.
 # For this project, we'll include them to ensure maximum compatibility.
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.env ./.env
 
 # Set environment variables
 ENV NODE_ENV=development
