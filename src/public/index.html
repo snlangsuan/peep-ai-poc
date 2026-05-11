@@ -8,7 +8,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="style.css">
+    <script>
+        const d = new URLSearchParams(window.location.search).get('d');
+        const v = d ? '?d=' + d : '';
+        document.write('<link rel="stylesheet" href="style.css' + v + '">');
+    </script>
 </head>
 <body>
     <div id="app">
@@ -184,7 +188,7 @@
         </nav>
     </div>
 
-    <script src="app.js"></script>
+    <script>document.write('<script src="app.js' + v + '"><\/script>');</script>
     <script>
         lucide.createIcons();
     </script>
