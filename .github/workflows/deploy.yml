@@ -70,7 +70,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest
+            type=raw,value=${{inputs.deploy_target}}
             type=sha,format=short
 
       - name: Build and push Docker image
@@ -96,25 +96,28 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           script: |
-            sudo -u ${{ secrets.TARGET_USER }} bash -c "
-              echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-              
-              echo \"Pulling Docker image from GHCR: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\"
-              docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-              
-              echo 'Stopping and removing existing container...'
-              docker stop ${{ env.CONTAINER_NAME }} 2> /dev/null || true
-              docker rm ${{ env.CONTAINER_NAME }} 2> /dev/null || true
-              
-              echo 'Starting new container...'
-              docker run -d \
-                --name "${{ env.CONTAINER_NAME }}" \
-                --restart always \
-                --add-host=host.docker.internal:host-gateway \
-                -p 8500:8000 \
-                --health-cmd="curl -f http://localhost:8000/health || exit 1" \
-                --health-interval=30s \
-                --health-timeout=10s \
-                --health-retries=3 \
-                ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            "
+            sudo -iu ubuntu bash <<'EOF'
+            set -euo pipefail
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            echo \"Pulling Docker image from GHCR: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.deploy_target }}\"
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.deploy_target }}
+            
+            echo 'Stopping and removing existing container...'
+            docker stop ${{ env.CONTAINER_NAME }} 2> /dev/null || true
+            docker rm ${{ env.CONTAINER_NAME }} 2> /dev/null || true
+            
+            echo 'Starting new container...'
+            docker run \
+              --name "${{ env.CONTAINER_NAME }}" \
+              --restart always \
+              --add-host=host.docker.internal:host-gateway \
+              -p 8500:8000 \
+              --health-cmd="curl -f http://localhost:8000/health || exit 1" \
+              --health-interval=30s \
+              --health-timeout=10s \
+              --health-retries=3 \
+              -d ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.deploy_target }}
+
+            docker ps
+            EOF
