@@ -1,5 +1,6 @@
 {
   "name": "peep-ai-api",
+  "version": "0.0.1",
   "scripts": {
     "dev": "NODE_ENV=local bun --watch src/server.ts",
     "start": "NODE_ENV=development bun src/server.ts"
