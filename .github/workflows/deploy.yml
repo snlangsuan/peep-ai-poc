@@ -109,7 +109,7 @@ jobs:
               
               echo 'Starting new container...'
               docker run -d \
-                --name "${CONTAINER_NAME}" \
+                --name "${{ env.CONTAINER_NAME }}" \
                 --restart always \
                 --add-host=host.docker.internal:host-gateway \
                 -p 8500:8000 \
