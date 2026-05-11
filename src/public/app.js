@@ -78,7 +78,7 @@ getStartedBtn.addEventListener('click', async () => {
     if (!name) return;
 
     try {
-        const response = await fetch('/api/v1/uids', {
+        const response = await fetch('/poc/api/v1/uids', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ display_name: name })
@@ -148,7 +148,7 @@ async function fetchChatHistory() {
     `;
 
     try {
-        const response = await fetch('/api/v1/chats?limit=50&desc=true', {
+        const response = await fetch('/poc/api/v1/chats?limit=50&desc=true', {
             headers: { 'x-api-key': state.user_id }
         });
 
@@ -237,7 +237,7 @@ async function fetchMonthHighlights(year, month, daysInMonth) {
     try {
         const startOfMonth = `${year}-${String(month + 1).padStart(2, '0')}-01 00:00`;
         const endOfMonth = `${year}-${String(month + 1).padStart(2, '0')}-${daysInMonth} 23:59`;
-        const response = await fetch(`/api/v1/schedules?start_date=${encodeURIComponent(startOfMonth)}&end_date=${encodeURIComponent(endOfMonth)}&limit=100`, {
+        const response = await fetch(`/poc/api/v1/schedules?start_date=${encodeURIComponent(startOfMonth)}&end_date=${encodeURIComponent(endOfMonth)}&limit=100`, {
             headers: { 'x-api-key': state.user_id }
         });
         if (response.ok) {
@@ -262,7 +262,7 @@ async function fetchSchedules(targetDate = null) {
         const month = String(now.getMonth() + 1).padStart(2, '0');
         const day = String(now.getDate()).padStart(2, '0');
 
-        let url = `/api/v1/schedules?limit=10`;
+        let url = `/poc/api/v1/schedules?limit=10`;
 
         if (targetDate) {
             const startDate = `${year}-${month}-${day} 00:00`;
@@ -378,7 +378,7 @@ async function setupSSE() {
     sseConnectionActive = true;
 
     try {
-        const response = await fetch('/api/v1/chats/stream', {
+        const response = await fetch('/poc/api/v1/chats/stream', {
             headers: { 'x-api-key': state.user_id }
         });
 
@@ -426,7 +426,7 @@ async function setupSSE() {
 
 async function fetchProfile() {
     try {
-        const response = await fetch('/api/v1/uids/profile', {
+        const response = await fetch('/poc/api/v1/uids/profile', {
             headers: { 'x-api-key': state.user_id }
         });
         if (response.ok) {
@@ -450,7 +450,7 @@ async function sendMessage() {
     showTypingIndicator();
 
     try {
-        const response = await fetch('/api/v1/chats', {
+        const response = await fetch('/poc/api/v1/chats', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -538,7 +538,7 @@ actionBtns.forEach(btn => {
 async function handleChatAction(type) {
     try {
         const today = new Date().toISOString().split('T')[0];
-        const response = await fetch(`/api/v1/chats/actions/${type}`, {
+        const response = await fetch(`/poc/api/v1/chats/actions/${type}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
