@@ -94,14 +94,11 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           script: |
-            # We lowercase the image name for compatibility
-            IMAGE_PATH=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
-            
             sudo -u ${{ secrets.TARGET_USER }} bash -c "
               echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
               
-              echo \"Pulling Docker image from GHCR: $IMAGE_PATH\"
-              docker pull $IMAGE_PATH:latest
+              echo \"Pulling Docker image from GHCR: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\"
+              docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
               
               echo 'Stopping and removing existing container...'
               docker stop ${{ env.CONTAINER_NAME }} || true
@@ -117,5 +114,5 @@ jobs:
                 --health-interval=30s \
                 --health-timeout=10s \
                 --health-retries=3 \
-                $IMAGE_PATH:latest
+                ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             "
