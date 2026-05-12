@@ -14,23 +14,29 @@ import type { Bindings, Variables } from '#/common/types/app.type'
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
+app.use(async (c, next) => {
+  const path = c.req.path
+  console.log('access', path)
+  await next()
+})
+
 app.use(requestId())
 app.use(secureHeaders())
 app.use(
-  '/api/*',
+  '/poc/api/*',
   cors({
     origin: envVariables.WHITE_LIST_ORIGINS,
   }),
 )
-app.use('/api/*', loggerMiddleware())
+app.use('/poc/api/*', loggerMiddleware())
 
 if (envVariables.NODE_ENV !== 'production') {
   registerV1Docs(app)
 }
 
-app.route('/api/v1', v1Route)
+app.route('/poc/api/v1', v1Route)
 
-app.get('/*', serveStatic({ root: 'src/public' }))
+app.use('/poc/*', serveStatic({ root: 'src/public', rewriteRequestPath: (path) => path.replace('/poc/', '/') }))
 
 app.onError(errorHandler)
 app.notFound(notFoundHandler)

@@ -241,8 +241,8 @@ export class BrainService {
   }
 
   private async handleGetExpenseSummary(args: ISummaryArgs, user_id: string): Promise<string> {
-    const s = getLocalTime(args.start_date || getLocalTime().startOf('day'))
-    const e = getLocalTime(args.end_date || getLocalTime().endOf('day'))
+    const s = getLocalTime(args.start_date) || getLocalTime()
+    const e = getLocalTime(args.end_date) || getLocalTime()
 
     if (e.diff(s, 'day') > 30) {
       return 'ขออภัยครับ เพื่อให้ข้อมูลอ่านง่ายและไม่ยาวจนเกินไป ผมแนะนำให้ระบุช่วงสรุปข้อมูลไม่เกิน 30 วันนะครับ รบกวนลองปรับช่วงวันที่อีกนิด เดี๋ยวผมรีบสรุปให้เลยครับ! 😊'
@@ -252,8 +252,8 @@ export class BrainService {
       return 'ขอโทษทีครับ ระบบสามารถดึงข้อมูลย้อนหลังได้สูงสุด 1 ปีครับ รบกวนลองเลือกช่วงเวลาที่สั้นลงอีกนิดนะครับ เดี๋ยวผมจัดการให้เลยครับ! ✨'
     }
 
-    const startDate = s.format('YYYY-MM-DD')
-    const endDate = e.format('YYYY-MM-DD')
+    const startDate = s.startOf('day').format('YYYY-MM-DD')
+    const endDate = e.endOf('day').format('YYYY-MM-DD')
 
     const result = await this.expenseService.list(user_id, {
       page: 1,
@@ -269,8 +269,8 @@ export class BrainService {
   }
 
   private async handleGetScheduleSummary(args: ISummaryArgs, user_id: string): Promise<string> {
-    const s = getLocalTime(args.start_date || getLocalTime().startOf('day'))
-    const e = getLocalTime(args.end_date || getLocalTime().endOf('day'))
+    const s = getLocalTime(args.start_date) || getLocalTime()
+    const e = getLocalTime(args.end_date) || getLocalTime()
 
     if (e.diff(s, 'day') > 30) {
       return 'ขออภัยครับ เพื่อให้ข้อมูลอ่านง่ายและไม่ยาวจนเกินไป ผมแนะนำให้ระบุช่วงสรุปข้อมูลไม่เกิน 30 วันนะครับ รบกวนลองปรับช่วงวันที่อีกนิด เดี๋ยวผมรีบสรุปให้เลยครับ! 😊'
@@ -280,8 +280,8 @@ export class BrainService {
       return 'ขอโทษทีครับ ระบบสามารถดึงข้อมูลย้อนหลังได้สูงสุด 1 ปีครับ รบกวนลองเลือกช่วงเวลาที่สั้นลงอีกนิดนะครับ เดี๋ยวผมจัดการให้เลยครับ! ✨'
     }
 
-    const startDate = s.format('YYYY-MM-DD')
-    const endDate = e.format('YYYY-MM-DD')
+    const startDate = s.startOf('day').format('YYYY-MM-DD')
+    const endDate = e.endOf('day').format('YYYY-MM-DD')
 
     const result = await this.scheduleService.list(user_id, {
       page: 1,

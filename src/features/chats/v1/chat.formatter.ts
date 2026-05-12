@@ -4,12 +4,21 @@ import { getLocalTime } from '~/src/common/utils/datetime.util'
 
 export class ChatFormatter {
   static formatDateRange(start: string, end: string): string {
-    if (start === end) return 'ในวันนี้'
-
-    const s = getLocalTime(start)
-    const e = getLocalTime(end)
+    const s = getLocalTime(start).startOf('day')
+    const e = getLocalTime(end).startOf('day')
+    const today = getLocalTime().startOf('day')
+    const yesterday = today.subtract(1, 'day')
+    const tomorrow = today.add(1, 'day')
 
     const thMonth = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+    if (s.isSame(e, 'day')) {
+      if (s.isSame(today, 'day')) return 'ในวันนี้'
+      if (s.isSame(yesterday, 'day')) return 'เมื่อวานนี้'
+      if (s.isSame(tomorrow, 'day')) return 'ในวันพรุ่งนี้'
+
+      return `ในวันที่ ${s.format('DD')} ${thMonth[s.month()]} ${s.year()}`
+    }
 
     const sDay = s.format('DD')
     const sMonth = thMonth[s.month()]
