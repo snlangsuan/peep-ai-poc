@@ -1,5 +1,6 @@
 import { pino } from 'pino'
 import { pinoHttp } from 'pino-http'
+
 import { envVariables } from '#/factory'
 
 import type { Options as PinoOptions } from 'pino-http'

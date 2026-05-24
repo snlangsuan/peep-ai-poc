@@ -1,160 +1,177 @@
 import { db } from '#/common/libs/firebase.lib'
 
-import type {
-  TCreateExpense,
-  TExpenseListFilter,
-  TExpenseListResponse,
-  TExpenseResponse,
-} from '#/features/expenses/v1/expense.type'
-import { logger } from '#/common/libs/logger.lib'
+import type { IExpenseEntity, TExpenseFilterPayload } from '#/features/expenses/v1/expense.type'
+import type admin from 'firebase-admin'
 
 export class ExpenseRepository {
-  private readonly collection = db.collection('expenses')
-
-  async create(user_id: string, data: TCreateExpense): Promise<TExpenseResponse> {
-    const now = new Date()
-
-    // Deduplication check
-    try {
-      const existingSnapshot = await this.collection
-        .where('created_by', '==', user_id)
-        .where('subject', '==', data.subject)
-        .where('amount', '==', data.amount)
-        .where('date', '==', data.date)
-        .get()
-
-      const firstDoc = existingSnapshot.docs[0]
-      if (firstDoc) {
-        logger.info('Duplicate expense found, returning existing one')
-        const d = firstDoc.data()
-        return {
-          id: d.id,
-          subject: d.subject,
-          amount: d.amount,
-          currency: d.currency,
-          date: d.date,
-          location: d.location,
-          time: d.time,
-          created_by: d.created_by,
-          created_at: d.created_at?.toDate(),
-          updated_at: d.updated_at?.toDate(),
-          _is_duplicate: true,
-        } as any
-      }
-    } catch (dbError) {
-      logger.error({ dbError }, 'Error during expense deduplication check')
-    }
-
-    const docRef = this.collection.doc()
-    const expenseData = {
-      id: docRef.id,
-      ...data,
-      created_by: user_id,
-      created_at: now,
-      updated_at: now,
-    }
-
-    await docRef.set(expenseData)
-    return this.mapToResponse(expenseData)
-  }
-
-  async list(user_id: string, filter: TExpenseListFilter): Promise<TExpenseListResponse> {
-    const { page, limit, start_date, end_date, sort, desc } = filter
-
-    let query = this.collection.where('created_by', '==', user_id)
-
-    if (start_date) {
-      query = query.where('date', '>=', start_date)
-    }
-    if (end_date) {
-      query = query.where('date', '<=', end_date)
-    }
-
-    // Get total count
-    const countSnapshot = await query.count().get()
-    const total = countSnapshot.data().count
-
-    const sortField = sort || 'date'
-    const orderDirection = desc ? 'desc' : 'asc'
-
-    if ((start_date || end_date) && sortField !== 'date') {
-      query = query.orderBy('date', orderDirection)
-    }
-
-    const snapshot = await query
-      .orderBy(sortField, orderDirection)
-      .limit(limit)
-      .offset((page - 1) * limit)
+  async findDuplicate(
+    createdBy: string,
+    subject: string,
+    amount: number,
+    date: string,
+  ): Promise<IExpenseEntity | null> {
+    const snapshot = await db
+      .collection('expenses')
+      .where('created_by', '==', createdBy)
+      .where('subject', '==', subject)
+      .where('amount', '==', amount)
+      .where('date', '==', date)
+      .limit(1)
       .get()
 
-    const items: TExpenseResponse[] = snapshot.docs.map((doc) => {
-      return this.mapToResponse(doc.data())
-    })
-
-    return {
-      metadata: {
-        total,
-        count: items.length,
-        page,
-        limit,
-      },
-      items,
+    if (snapshot.empty) {
+      return null
     }
+
+    const doc = snapshot.docs[0]
+    if (!doc) {
+      return null
+    }
+
+    return this.mapToResponse(doc.data())
   }
 
-  async getById(user_id: string, id: string): Promise<TExpenseResponse | null> {
-    const doc = await this.collection.doc(id).get()
-    if (!doc.exists) return null
+  async create(input: IExpenseEntity): Promise<IExpenseEntity> {
+    const existing = await this.findDuplicate(input.created_by, input.subject, input.amount, input.date)
 
+    if (existing) {
+      return existing
+    }
+
+    await db
+      .collection('expenses')
+      .doc(input.uuid)
+      .set({
+        uuid: input.uuid,
+        created_by: input.created_by,
+        subject: input.subject,
+        amount: input.amount,
+        category: input.category,
+        currency: input.currency,
+        location: input.location ?? null,
+        date: input.date,
+        time: input.time ?? null,
+        created_at: input.created_at,
+        updated_at: input.updated_at,
+      })
+
+    return input
+  }
+
+  async createMultiple(inputs: IExpenseEntity[]): Promise<IExpenseEntity[]> {
+    const results: IExpenseEntity[] = []
+    for (const input of inputs) {
+      const res = await this.create(input)
+      results.push(res)
+    }
+    return results
+  }
+
+  async findById(uuid: string): Promise<IExpenseEntity | null> {
+    const doc = await db.collection('expenses').doc(uuid).get()
+    if (!doc.exists) {
+      return null
+    }
     const data = doc.data()
-    if (data?.created_by !== user_id) return null
-
+    if (!data) {
+      return null
+    }
     return this.mapToResponse(data)
   }
 
-  async update(user_id: string, id: string, data: Partial<TCreateExpense>): Promise<TExpenseResponse | null> {
-    const docRef = this.collection.doc(id)
-    const doc = await docRef.get()
-    if (!doc.exists) return null
+  async list(
+    userId: string,
+    filter: Partial<TExpenseFilterPayload>,
+  ): Promise<{ data: IExpenseEntity[]; total: number }> {
+    const query = db.collection('expenses').where('created_by', '==', userId)
+    const snapshot = await query.get()
+    let docs = snapshot.docs.map((d) => this.mapToResponse(d.data()))
 
-    const existingData = doc.data()
-    if (existingData?.created_by !== user_id) return null
-
-    const now = new Date()
-    const updateData = {
-      ...data,
-      updated_at: now,
+    if (filter.start_date) {
+      docs = docs.filter((doc) => doc.date >= filter.start_date!)
+    }
+    if (filter.end_date) {
+      docs = docs.filter((doc) => doc.date <= filter.end_date!)
     }
 
-    await docRef.update(updateData)
+    const total = docs.length
 
-    return this.getById(user_id, id)
-  }
+    const sortField = filter.sort || 'date'
+    const desc = filter.desc ?? false
+    docs.sort((a, b) => {
+      const valA = a[sortField as keyof IExpenseEntity]
+      const valB = b[sortField as keyof IExpenseEntity]
 
-  async delete(user_id: string, id: string): Promise<boolean> {
-    const docRef = this.collection.doc(id)
-    const doc = await docRef.get()
-    if (!doc.exists) return false
+      if (valA === undefined || valA === null) return desc ? 1 : -1
+      if (valB === undefined || valB === null) return desc ? -1 : 1
 
-    const data = doc.data()
-    if (data?.created_by !== user_id) return false
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return desc ? valB - valA : valA - valB
+      }
 
-    await docRef.delete()
-    return true
-  }
+      const strA = String(valA)
+      const strB = String(valB)
+      return desc ? strB.localeCompare(strA) : strA.localeCompare(strB)
+    })
 
-  private mapToResponse(data: any): TExpenseResponse {
+    const limit = filter.limit ?? 25
+    const page = filter.page ?? 1
+    const offset = (page - 1) * limit
+    const paginatedData = docs.slice(offset, offset + limit)
+
     return {
-      id: data.id,
-      subject: data.subject,
-      amount: data.amount,
-      currency: data.currency,
-      date: data.date,
-      location: data.location,
-      time: data.time,
-      created_by: data.created_by,
-      created_at: data.created_at?.toDate ? data.created_at.toDate() : data.created_at,
-      updated_at: data.updated_at?.toDate ? data.updated_at.toDate() : data.updated_at,
-    } as TExpenseResponse
+      data: paginatedData,
+      total,
+    }
+  }
+
+  async update(uuid: string, fields: Partial<IExpenseEntity>): Promise<void> {
+    const updateData: Record<string, any> = {
+      updated_at: fields.updated_at,
+    }
+
+    if (fields.subject !== undefined) {
+      updateData.subject = fields.subject
+    }
+    if (fields.amount !== undefined) {
+      updateData.amount = fields.amount
+    }
+    if (fields.category !== undefined) {
+      updateData.category = fields.category
+    }
+    if (fields.currency !== undefined) {
+      updateData.currency = fields.currency
+    }
+    if (fields.location !== undefined) {
+      updateData.location = fields.location ?? null
+    }
+    if (fields.date !== undefined) {
+      updateData.date = fields.date
+    }
+    if (fields.time !== undefined) {
+      updateData.time = fields.time ?? null
+    }
+
+    await db.collection('expenses').doc(uuid).update(updateData)
+  }
+
+  async delete(uuid: string): Promise<void> {
+    await db.collection('expenses').doc(uuid).delete()
+  }
+
+  private mapToResponse(data: admin.firestore.DocumentData): IExpenseEntity {
+    return {
+      uuid: data.uuid as string,
+      created_by: data.created_by as string,
+      subject: data.subject as string,
+      amount: data.amount as number,
+      category: (data.category || 'Other') as any,
+      currency: (data.currency || 'THB') as string,
+      location: (data.location ?? null) as string | null,
+      date: data.date as string,
+      time: (data.time ?? null) as string | null,
+      created_at: data.created_at as string,
+      updated_at: data.updated_at as string,
+    }
   }
 }

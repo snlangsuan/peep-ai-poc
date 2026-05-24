@@ -1,102 +1,104 @@
 import { describeRoute, resolver } from 'hono-openapi'
+import { z } from 'zod'
 
-import { HTTP_ERROR_DESCRIPTIONS, HTTP_ERROR_EXAMPLE } from '#/common/constants/openapi.contant'
-import { httpErrorResponseSchema, successResponseSchema } from '#/common/schemas/response.schema'
+import { DEFAULT_RESPONSE } from '#/common/constants/openapi.contant'
 import { ERouteTag } from '#/common/types/openapi.type'
-import { chatListResponseSchema, chatResponseSchema } from '#/features/chats/v1/chat.schema'
+import { chatItemResponseSchema, chatSseEventSchema } from '#/features/chats/v1/chat.schema'
 
-export const sendChatDoc = describeRoute({
-  summary: 'Send a chat message',
-  description: 'Sends a new message to another user.',
+const successSchema = z.object({
+  success: z.boolean(),
+  jobId: z.string().optional(),
+  message: z.string().optional(),
+})
+
+export const sendChatDoc: ReturnType<typeof describeRoute> = describeRoute({
   tags: [ERouteTag.CHAT],
+  summary: 'Send chat message',
+  description: 'Sends a chat message to a background processing queue.',
   security: [{ ApiKeyAuth: [] }],
   responses: {
-    201: {
-      description: HTTP_ERROR_DESCRIPTIONS[201] ?? '',
+    200: {
+      description: 'Successfully queued chat message',
       content: {
         'application/json': {
-          schema: resolver(chatResponseSchema),
+          schema: resolver(successSchema),
         },
       },
     },
-    400: {
-      description: HTTP_ERROR_DESCRIPTIONS[400] ?? '',
-      content: {
-        'application/json': {
-          schema: resolver(httpErrorResponseSchema.meta({ example: HTTP_ERROR_EXAMPLE['400'] })),
-        },
-      },
-    },
+    ...DEFAULT_RESPONSE,
   },
 })
 
-export const listChatDoc = describeRoute({
+export const listChatDoc: ReturnType<typeof describeRoute> = describeRoute({
+  tags: [ERouteTag.CHAT],
   summary: 'List chat history',
-  description: 'Retrieves paginated chat history between the current user and another user.',
-  tags: [ERouteTag.CHAT],
   security: [{ ApiKeyAuth: [] }],
   responses: {
     200: {
-      description: HTTP_ERROR_DESCRIPTIONS[200] ?? '',
+      description: 'Successfully retrieved chat history',
       content: {
         'application/json': {
-          schema: resolver(chatListResponseSchema),
+          schema: resolver(chatItemResponseSchema),
         },
       },
     },
+    ...DEFAULT_RESPONSE,
   },
 })
 
-export const streamChatDoc = describeRoute({
-  summary: 'Stream chat messages',
-  description: 'Establishes a Server-Sent Events (SSE) connection to receive real-time chat updates.',
+export const streamChatDoc: ReturnType<typeof describeRoute> = describeRoute({
   tags: [ERouteTag.CHAT],
+  summary: 'Stream chat events (SSE)',
+  description: 'Opens a Server-Sent Events connection. Emits real-time events while the agent processes messages.',
   security: [{ ApiKeyAuth: [] }],
   responses: {
     200: {
-      description: 'SSE stream established.',
+      description: 'SSE stream of chat events',
       content: {
         'text/event-stream': {
-          schema: { type: 'string' },
+          schema: resolver(chatSseEventSchema),
         },
       },
     },
-  },
-})
-export const actionExpensesDoc = describeRoute({
-  summary: 'Trigger expense summary',
-  description: 'Triggers the AI to provide a summary of expenses in the chat.',
-  tags: [ERouteTag.CHAT],
-  security: [{ ApiKeyAuth: [] }],
-  responses: {
-    201: {
-      description: 'Action triggered successfully.',
-      content: { 'application/json': { schema: resolver(successResponseSchema) } },
-    },
+    ...DEFAULT_RESPONSE,
   },
 })
 
-export const actionSchedulesDoc = describeRoute({
-  summary: 'Trigger schedule summary',
-  description: 'Triggers the AI to provide a summary of schedules in the chat.',
+export const triggerActionDoc: ReturnType<typeof describeRoute> = describeRoute({
   tags: [ERouteTag.CHAT],
+  summary: 'Trigger button/action message',
+  description: 'Triggers a specific action prompt (like listing expenses/todos/schedules, summarizing moods or fortune telling) on behalf of the user, processing it via the queue and SSE stream.',
   security: [{ ApiKeyAuth: [] }],
   responses: {
-    201: {
-      description: 'Action triggered successfully.',
-      content: { 'application/json': { schema: resolver(successResponseSchema) } },
+    200: {
+      description: 'Successfully triggered action',
+      content: {
+        'application/json': {
+          schema: resolver(successSchema),
+        },
+      },
     },
+    ...DEFAULT_RESPONSE,
   },
 })
-export const actionOverallSummaryDoc = describeRoute({
-  summary: 'Trigger overal summary',
-  description: 'Triggers the AI to provide a overal summary of everything in the chat.',
+
+export const updateMoodDoc: ReturnType<typeof describeRoute> = describeRoute({
   tags: [ERouteTag.CHAT],
+  summary: 'Update daily mood via interactive card click',
+  description: 'Submits user mood choice from the daily mood card, updating the card state (one-time clickable) and storing the mood entry.',
   security: [{ ApiKeyAuth: [] }],
   responses: {
-    201: {
-      description: 'Action triggered successfully.',
-      content: { 'application/json': { schema: resolver(successResponseSchema) } },
+    200: {
+      description: 'Successfully updated daily mood',
+      content: {
+        'application/json': {
+          schema: resolver(successSchema),
+        },
+      },
     },
+    ...DEFAULT_RESPONSE,
   },
 })
+
+
+

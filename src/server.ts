@@ -2,10 +2,7 @@ import { serve } from '@hono/node-server'
 
 import app from '#/app'
 import { logger } from '#/common/libs/logger.lib'
-import { NotificationService } from '#/common/services/notification.service'
-import { ScheduleRepository } from '#/features/schedules/v1/schedule.repository'
-import { ScheduleService } from '#/features/schedules/v1/schedule.service'
-import { ChatRepository } from '#/features/chats/v1/chat.repository'
+import { startQueueWorker, startScheduleWorker, stopAllWorkers } from '#/worker'
 
 const port = Number(process.env.PORT) || 8000
 const host = process.env.HOST || 'localhost'
@@ -31,9 +28,9 @@ const server = serve({
   ...options,
 })
 
-// Initialize Background Notification Service
-const notificationService = new NotificationService(new ScheduleService(new ScheduleRepository()), new ChatRepository())
-notificationService.start()
+// Initialize Background Workers (Queue Handler & Schedule Task Runner)
+startQueueWorker()
+startScheduleWorker()
 
 const protocol = isLocal && options.serverOptions ? 'https' : 'http'
 
@@ -47,7 +44,7 @@ if (isLocal && !options.serverOptions) {
 
 process.on('SIGINT', () => {
   logger.info('Shutting down server...')
-  notificationService.stop()
+  stopAllWorkers()
   server.close()
   process.exit(0)
 })

@@ -1,17 +1,33 @@
-import { z } from 'zod'
-
 import type {
-  createExpenseSchema,
-  expenseIdParamSchema,
-  expenseListFilterSchema,
-  expenseListResponseSchema,
+  expenseCreatePayloadSchema,
+  baseExpenseCreatePayloadItemSchema,
+  expenseUpdatePayloadSchema,
   expenseResponseSchema,
-  updateExpenseSchema,
+  expenseFilterPayloadSchema,
+  expenseItemResponseSchema,
+  expenseParamPayloadSchema,
+  expenseCategorySchema,
 } from '#/features/expenses/v1/expense.schema'
+import type { z } from 'zod'
 
-export type TCreateExpense = z.infer<typeof createExpenseSchema>
-export type TUpdateExpense = z.infer<typeof updateExpenseSchema>
+export type TExpenseCreatePayload = z.infer<typeof expenseCreatePayloadSchema>
+export type TExpenseCreatePayloadItem = z.infer<typeof baseExpenseCreatePayloadItemSchema>
+export type TExpenseUpdatePayload = z.infer<typeof expenseUpdatePayloadSchema>
 export type TExpenseResponse = z.infer<typeof expenseResponseSchema>
-export type TExpenseListResponse = z.infer<typeof expenseListResponseSchema>
-export type TExpenseListFilter = z.infer<typeof expenseListFilterSchema>
-export type TExpenseIdParam = z.infer<typeof expenseIdParamSchema>
+export type TExpenseFilterPayload = z.infer<typeof expenseFilterPayloadSchema>
+export type TExpenseItemResponse = z.infer<typeof expenseItemResponseSchema>
+export type TExpenseParamPayload = z.infer<typeof expenseParamPayloadSchema>
+
+export interface IExpenseEntity {
+  uuid: string
+  created_by: string
+  subject: string
+  amount: number
+  category: z.infer<typeof expenseCategorySchema>
+  currency: string
+  location?: string | null
+  date: string
+  time?: string | null
+  created_at: string
+  updated_at: string
+}

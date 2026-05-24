@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { serveStatic } from 'hono/bun'
 import { cors } from 'hono/cors'
 import { requestId } from 'hono/request-id'
 import { secureHeaders } from 'hono/secure-headers'
@@ -8,7 +9,6 @@ import { loggerMiddleware } from '#/core/middlewares/logger.middleware'
 import { envVariables } from '#/factory'
 import { registerV1Docs } from '#/infrastructure/http/openapi/v1-spec'
 import v1Route from '#/infrastructure/http/routes/v1'
-import { serveStatic } from 'hono/bun'
 
 import type { Bindings, Variables } from '#/common/types/app.type'
 

@@ -1,99 +1,95 @@
+import { z } from 'zod'
+
+import { successResponseSchema } from '#/common/schemas/response.schema'
+import { expenseResponseSchema, expenseItemResponseSchema } from '#/features/expenses/v1/expense.schema'
+
 import type { Bindings, JsonInputSchema, ParamInputSchema, QueryInputSchema, Variables } from '#/common/types/app.type'
+import type { TSuccessResponse } from '#/common/types/response.type'
 import type { ExpenseService } from '#/features/expenses/v1/expense.service'
 import type {
-  TCreateExpense,
-  TExpenseIdParam,
-  TExpenseListFilter,
-  TExpenseListResponse,
+  TExpenseCreatePayload,
+  TExpenseFilterPayload,
   TExpenseResponse,
-  TUpdateExpense,
+  TExpenseUpdatePayload,
+  TExpenseParamPayload,
+  TExpenseItemResponse,
 } from '#/features/expenses/v1/expense.type'
 import type { Context } from 'hono'
 
-import {
-  expenseListResponseSchema,
-  expenseResponseSchema,
-} from '#/features/expenses/v1/expense.schema'
-
 export class ExpenseController {
-  constructor(private readonly expenseService: ExpenseService) {}
+  private service: ExpenseService
+
+  constructor(service: ExpenseService) {
+    this.service = service
+  }
 
   create = async <
     E extends { Bindings: Bindings; Variables: Variables },
     P extends string,
-    I extends JsonInputSchema<TCreateExpense>,
+    I extends JsonInputSchema<TExpenseCreatePayload>,
   >(
     c: Context<E, P, I>,
   ): Promise<Response> => {
-    const apiKey = c.req.header('x-api-key')
-    const data = c.req.valid('json')
+    const userId = c.get('user_id')
+    const body = c.req.valid('json')
+    const result = await this.service.create(userId, body)
 
-    const result = await this.expenseService.create(apiKey as string, data)
-
-    return c.json<TExpenseResponse>(expenseResponseSchema.parse(result), 201)
-  }
-
-  list = async <
-    E extends { Bindings: Bindings; Variables: Variables },
-    P extends string,
-    I extends QueryInputSchema<TExpenseListFilter>,
-  >(
-    c: Context<E, P, I>,
-  ): Promise<Response> => {
-    const apiKey = c.req.header('x-api-key')
-    const filter = c.req.valid('query')
-
-    const result = await this.expenseService.list(apiKey as string, filter)
-
-    return c.json<TExpenseListResponse>(expenseListResponseSchema.parse(result))
+    if (Array.isArray(result)) {
+      return c.json<TExpenseResponse[]>(z.array(expenseResponseSchema).parse(result))
+    }
+    return c.json<TExpenseResponse>(expenseResponseSchema.parse(result))
   }
 
   get = async <
     E extends { Bindings: Bindings; Variables: Variables },
     P extends string,
-    I extends ParamInputSchema<TExpenseIdParam>,
+    I extends ParamInputSchema<TExpenseParamPayload>,
   >(
     c: Context<E, P, I>,
   ): Promise<Response> => {
-    const apiKey = c.req.header('x-api-key')
+    const userId = c.get('user_id')
     const { id } = c.req.valid('param')
-
-    const result = await this.expenseService.get(apiKey as string, id)
-    if (!result) return c.json({ error: 'Expense not found' }, 404)
-
+    const result = await this.service.getExpense(userId, id)
     return c.json<TExpenseResponse>(expenseResponseSchema.parse(result))
+  }
+
+  list = async <
+    E extends { Bindings: Bindings; Variables: Variables },
+    P extends string,
+    I extends QueryInputSchema<TExpenseFilterPayload>,
+  >(
+    c: Context<E, P, I>,
+  ): Promise<Response> => {
+    const userId = c.get('user_id')
+    const query = c.req.valid('query')
+    const result = await this.service.getExpenses(userId, query)
+    return c.json<TExpenseItemResponse>(expenseItemResponseSchema.parse(result))
   }
 
   update = async <
     E extends { Bindings: Bindings; Variables: Variables },
     P extends string,
-    I extends ParamInputSchema<TExpenseIdParam> & JsonInputSchema<TUpdateExpense>,
+    I extends ParamInputSchema<TExpenseParamPayload> & JsonInputSchema<TExpenseUpdatePayload>,
   >(
     c: Context<E, P, I>,
   ): Promise<Response> => {
-    const apiKey = c.req.header('x-api-key')
+    const userId = c.get('user_id')
     const { id } = c.req.valid('param')
-    const data = c.req.valid('json')
-
-    const result = await this.expenseService.update(apiKey as string, id, data)
-    if (!result) return c.json({ error: 'Expense not found' }, 404)
-
-    return c.json<TExpenseResponse>(expenseResponseSchema.parse(result))
+    const body = c.req.valid('json')
+    await this.service.update(userId, id, body)
+    return c.json<TSuccessResponse>(successResponseSchema.parse({}))
   }
 
   delete = async <
     E extends { Bindings: Bindings; Variables: Variables },
     P extends string,
-    I extends ParamInputSchema<TExpenseIdParam>,
+    I extends ParamInputSchema<TExpenseParamPayload>,
   >(
     c: Context<E, P, I>,
   ): Promise<Response> => {
-    const apiKey = c.req.header('x-api-key')
+    const userId = c.get('user_id')
     const { id } = c.req.valid('param')
-
-    const success = await this.expenseService.delete(apiKey as string, id)
-    if (!success) return c.json({ error: 'Expense not found' }, 404)
-
-    return c.json({ success: true })
+    await this.service.delete(userId, id)
+    return c.json<TSuccessResponse>(successResponseSchema.parse({}))
   }
 }

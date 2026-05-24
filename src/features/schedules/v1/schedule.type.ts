@@ -1,17 +1,33 @@
-import { z } from 'zod'
-
 import type {
-  createScheduleSchema,
-  scheduleIdParamSchema,
-  scheduleListFilterSchema,
-  scheduleListResponseSchema,
+  scheduleCreatePayloadSchema,
+  scheduleUpdatePayloadSchema,
   scheduleResponseSchema,
-  updateScheduleSchema,
+  scheduleFilterPayloadSchema,
+  scheduleItemResponseSchema,
+  scheduleParamPayloadSchema,
 } from '#/features/schedules/v1/schedule.schema'
+import type { z } from 'zod'
 
-export type TCreateSchedule = z.infer<typeof createScheduleSchema>
-export type TUpdateSchedule = z.infer<typeof updateScheduleSchema>
+export type TScheduleCreatePayload = z.infer<typeof scheduleCreatePayloadSchema>
+export type TScheduleUpdatePayload = z.infer<typeof scheduleUpdatePayloadSchema>
 export type TScheduleResponse = z.infer<typeof scheduleResponseSchema>
-export type TScheduleListResponse = z.infer<typeof scheduleListResponseSchema>
-export type TScheduleListFilter = z.infer<typeof scheduleListFilterSchema>
-export type TScheduleIdParam = z.infer<typeof scheduleIdParamSchema>
+export type TScheduleFilterPayload = z.infer<typeof scheduleFilterPayloadSchema>
+export type TScheduleItemResponse = z.infer<typeof scheduleItemResponseSchema>
+export type TScheduleParamPayload = z.infer<typeof scheduleParamPayloadSchema>
+
+export type TScheduleCreateInput = {
+  uuid: string
+  user_id: string
+  scheduled_at: string
+  before_sent_at?: string | null
+  sent_at?: string | null
+  payload: {
+    message: string
+    type: string
+    title: string
+    description?: string | null
+    location?: string | null
+  }
+  created_at: string
+  updated_at: string
+}

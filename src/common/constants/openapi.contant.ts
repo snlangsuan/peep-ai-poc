@@ -104,27 +104,19 @@ export const TAG_DESCRIPTIONS: { name: string; description: string }[] = [
     description: "You can read the health information of the API server to see if it's still operational.",
   },
   {
-    name: ERouteTag.EXPENSE,
-    description: 'You can manage and track financial expenses, including recording, updating, and categorizing costs.',
+    name: ERouteTag.USER,
+    description: 'You can manage users, including login, registration, and user information retrieval.',
   },
   {
     name: ERouteTag.SCHEDULE,
-    description: 'You can manage your planning and schedules, including event coordination and time-based task management.',
+    description: 'You can manage schedules, including creation, retrieval, updates, and deletion.',
   },
   {
-    name: ERouteTag.SUMMARY,
-    description: 'You can retrieve aggregated data and analytical summaries of your expenses and schedules.',
+    name: ERouteTag.TODO,
+    description: 'You can manage todos, including creation, retrieval, updates, and deletion.',
   },
   {
-    name: ERouteTag.MESSAGE,
-    description: 'You can manage and process messages, including extracting structured information from communication data.',
-  },
-  {
-    name: ERouteTag.UID,
-    description: 'You can generate unique identifiers for various use cases.',
-  },
-  {
-    name: ERouteTag.CHAT,
-    description: 'You can manage real-time communication, including sending messages and streaming chat updates.',
+    name: ERouteTag.EXPENSE,
+    description: 'You can manage expenses, including creation, retrieval, updates, and deletion.',
   },
 ]

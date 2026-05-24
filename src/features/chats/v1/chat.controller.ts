@@ -1,172 +1,263 @@
+import { streamSSE } from 'hono/streaming'
+
+import { successResponseSchema } from '#/common/schemas/response.schema'
+import { sseBroker } from '#/common/services/sse-broker.service'
+import { getUUID } from '#/common/utils/helper.util'
+import { chatItemResponseSchema } from '#/features/chats/v1/chat.schema'
+import { db } from '#/common/libs/firebase.lib'
+import { getUtcTime, getLocalTime } from '#/common/utils/datetime.util'
+
 import type { Bindings, JsonInputSchema, QueryInputSchema, Variables } from '#/common/types/app.type'
+import type { TSuccessResponse } from '#/common/types/response.type'
 import type { ChatService } from '#/features/chats/v1/chat.service'
-import type {
-  TChatActionRequestBodyPayload,
-  TChatListFilter,
-  TChatListResponse,
-  TChatResponse,
-  TChatStreamFilter,
-  TSendMessage,
-} from '#/features/chats/v1/chat.type'
+import type { TChatCreatePayload, TChatFilterPayload, TChatItemResponse, TChatActionPayload, TChatMoodUpdatePayload } from '#/features/chats/v1/chat.type'
 import type { Context } from 'hono'
 
-import { streamSSE } from 'hono/streaming'
-import {
-  chatListResponseSchema,
-  chatResponseSchema,
-  chatResponseWithContentSchema,
-} from '#/features/chats/v1/chat.schema'
-import InsufficientPermissionException from '~/src/common/exceptions/insufficient.permission.exception'
-
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(private readonly service: ChatService) {}
 
   send = async <
     E extends { Bindings: Bindings; Variables: Variables },
     P extends string,
-    I extends JsonInputSchema<TSendMessage>,
+    I extends JsonInputSchema<TChatCreatePayload>,
   >(
     c: Context<E, P, I>,
   ): Promise<Response> => {
-    const apiKey = c.req.header('x-api-key')
-    const data = c.req.valid('json')
+    const userId = c.get('user_id')
+    const body = c.req.valid('json')
 
-    try {
-      const result = await this.chatService.send(apiKey as string, data)
-      return c.json<TChatResponse>(chatResponseSchema.parse(result), 201)
-    } catch (error) {
-      if (error instanceof Error && error.message === 'OUT_OF_CREDITS') {
-        throw new InsufficientPermissionException('ขออภัยครับ ดูเหมือนเครดิตของคุณจะหมดแล้ว 😊 สามารถเติมเครดิตเพื่อใช้งาน Peep AI ต่อได้ทันทีเลยนะครับ')
-      }
-      throw error
-    }
+    await this.service.send(userId, body.content)
+    return c.json<TSuccessResponse>(successResponseSchema.parse({}))
   }
 
   list = async <
     E extends { Bindings: Bindings; Variables: Variables },
     P extends string,
-    I extends QueryInputSchema<TChatListFilter>,
+    I extends QueryInputSchema<TChatFilterPayload>,
   >(
     c: Context<E, P, I>,
   ): Promise<Response> => {
-    const apiKey = c.req.header('x-api-key')
-    const filter = c.req.valid('query')
+    const userId = c.get('user_id')
+    const query = c.req.valid('query')
+    const limit = query.limit
+    const rawItems = await this.service.list(userId, limit)
 
-    const result = await this.chatService.list(apiKey as string, filter)
+    const items = rawItems.map((item) => {
+      let content: Array<
+        | { type: 'text'; text: string }
+        | { type: 'action'; link: string }
+        | { type: 'mood_card'; options: string[]; selected_mood: string | null }
+      > = [
+        {
+          type: 'text' as const,
+          text: item.message || '',
+        },
+      ]
 
-    return c.json<TChatListResponse>(chatListResponseSchema.parse(result))
+      if (item.message) {
+        const msgStr = item.message.trim()
+        if (msgStr.startsWith('{') && msgStr.endsWith('}')) {
+          try {
+            const parsed = JSON.parse(msgStr)
+            if (parsed.type === 'action' && typeof parsed.link === 'string') {
+              content = [
+                {
+                  type: 'action' as const,
+                  link: parsed.link,
+                },
+              ]
+            } else if (parsed.type === 'mood_card' && Array.isArray(parsed.options)) {
+              content = [
+                {
+                  type: 'mood_card' as const,
+                  options: parsed.options,
+                  selected_mood: parsed.selected_mood ?? null,
+                },
+              ]
+            }
+          } catch {}
+        } else if (msgStr.startsWith('peep://')) {
+          content = [
+            {
+              type: 'action' as const,
+              link: msgStr,
+            },
+          ]
+        }
+      }
+
+      return {
+        id: item.id || getUUID(),
+        sender_id: item.sender_id || 'unknown',
+        content,
+        created_at:
+          typeof item.created_at === 'string'
+            ? item.created_at
+            : item.created_at?.toISOString() || new Date().toISOString(),
+      }
+    })
+
+    return c.json<TChatItemResponse>(
+      chatItemResponseSchema.parse({
+        items,
+        metadata: {
+          total: items.length,
+          count: items.length,
+          page: 1,
+          limit,
+        },
+      }),
+    )
   }
 
   stream = async <
     E extends { Bindings: Bindings; Variables: Variables },
     P extends string,
-    I extends QueryInputSchema<TChatStreamFilter>,
+    I extends Record<string, never>,
   >(
     c: Context<E, P, I>,
   ): Promise<Response> => {
-    const apiKey = c.req.header('x-api-key')
+    const userId = c.get('user_id')
 
     return streamSSE(c, async (stream) => {
-      // Send initial credit balance
-      const initialProfile = await this.chatService.getProfile(apiKey as string)
-      if (initialProfile) {
-        await stream.writeSSE({
-          data: JSON.stringify({ credits: initialProfile.credits }),
-          event: 'credit_balance',
-        })
-      }
+      let unsubscribe: (() => void) | null = null
 
-      const unsubscribe = this.chatService.subscribe(apiKey as string, async (message) => {
-        const { credits, ...rest } = message
-        // Send message event
-        await stream.writeSSE({
-          data: JSON.stringify(chatResponseWithContentSchema.parse(rest)),
-          event: 'message',
-          id: message.id,
-        })
-
-        // Also send credit_balance event if credits are available in the message
-        if (credits !== undefined) {
-          await stream.writeSSE({
-            data: JSON.stringify({ credits }),
-            event: 'credit_balance',
-          })
+      const cleanup = () => {
+        if (unsubscribe) {
+          unsubscribe()
+          unsubscribe = null
         }
-      })
-
-      stream.onAbort(() => {
-        unsubscribe()
-      })
-
-      // Keep connection alive
-      while (true) {
-        await stream.sleep(30000)
-        await stream.writeSSE({
-          event: 'ping',
-          id: Date.now().toString(),
-          data: '',
-        })
       }
+
+      unsubscribe = sseBroker.subscribe(userId, async (event) => {
+        await stream.writeSSE({
+          data: JSON.stringify(event),
+          event: event.type,
+        })
+      })
+
+      stream.onAbort(cleanup)
+
+      await stream.sleep(24 * 60 * 60 * 1000)
+
+      cleanup()
     })
   }
 
-  actionExpenses = async <
+  triggerAction = async <
     E extends { Bindings: Bindings; Variables: Variables },
     P extends string,
-    I extends JsonInputSchema<TChatActionRequestBodyPayload>,
+    I extends JsonInputSchema<TChatActionPayload>,
   >(
     c: Context<E, P, I>,
   ): Promise<Response> => {
-    const apiKey = c.req.header('x-api-key')
-    const { start_date, end_date } = c.req.valid('json')
-    try {
-      await this.chatService.handleAction(apiKey as string, 'expenses', { start_date, end_date })
-      return c.json({ success: true }, 201)
-    } catch (error) {
-      if (error instanceof Error && error.message === 'OUT_OF_CREDITS') {
-        throw new InsufficientPermissionException('ขออภัยครับ ดูเหมือนเครดิตของคุณจะหมดแล้ว 😊 สามารถเติมเครดิตเพื่อใช้งาน Peep AI ต่อได้ทันทีเลยนะครับ')
-      }
-      throw error
+    const userId = c.get('user_id')
+    const body = c.req.valid('json')
+    const action = body.action
+
+    let promptText = ''
+    switch (action) {
+      case 'expense':
+        promptText = 'ขอดูรายการค่าใช้จ่ายของวันนี้ให้หน่อยนะปี๊บ'
+        break
+      case 'schedule':
+        promptText = 'ขอดูรายการกำหนดการของวันนี้ให้หน่อยนะปี๊บ'
+        break
+      case 'todo':
+        promptText = 'ขอดูรายการสิ่งที่ต้องทำของวันนี้ให้หน่อยนะปี๊บ'
+        break
+      case 'mood':
+        promptText = 'ช่วยสรุปอารมณ์ (mood) ของผมในช่วง 7 วันล่าสุดให้หน่อยนะปี๊บ'
+        break
+      case 'summary':
+        promptText = 'ช่วยวิเคราะห์สรุปข้อมูลภาพรวมของโครงการให้หน่อยนะปี๊บ'
+        break
+      case 'fortune-telling':
+        promptText = 'ช่วยทำนายดวงชะตาให้ผมหน่อยนะปี๊บ'
+        break
     }
+
+    const jobId = await this.service.send(userId, [
+      {
+        type: 'text' as const,
+        text: promptText,
+      },
+    ])
+
+    return c.json<TSuccessResponse>(
+      successResponseSchema.parse({
+        success: true,
+        jobId,
+      }),
+    )
   }
 
-  actionSchedules = async <
+  updateMood = async <
     E extends { Bindings: Bindings; Variables: Variables },
     P extends string,
-    I extends JsonInputSchema<TChatActionRequestBodyPayload>,
+    I extends JsonInputSchema<TChatMoodUpdatePayload>,
   >(
     c: Context<E, P, I>,
   ): Promise<Response> => {
-    const apiKey = c.req.header('x-api-key')
-    const { start_date, end_date } = c.req.valid('json')
-    try {
-      await this.chatService.handleAction(apiKey as string, 'schedules', { start_date, end_date })
-      return c.json({ success: true }, 201)
-    } catch (error) {
-      if (error instanceof Error && error.message === 'OUT_OF_CREDITS') {
-        throw new InsufficientPermissionException('ขออภัยครับ ดูเหมือนเครดิตของคุณจะหมดแล้ว 😊 สามารถเติมเครดิตเพื่อใช้งาน Peep AI ต่อได้ทันทีเลยนะครับ')
-      }
-      throw error
-    }
-  }
+    const userId = c.get('user_id')
+    const body = c.req.valid('json')
+    const { messageId, mood } = body
 
-  actionOverallSummary = async <
-    E extends { Bindings: Bindings; Variables: Variables },
-    P extends string,
-    I extends JsonInputSchema<TChatActionRequestBodyPayload>,
-  >(
-    c: Context<E, P, I>,
-  ): Promise<Response> => {
-    const apiKey = c.req.header('x-api-key')
-    const { start_date, end_date } = c.req.valid('json')
-    try {
-      await this.chatService.handleAction(apiKey as string, 'overall', { start_date, end_date })
-      return c.json({ success: true }, 201)
-    } catch (error) {
-      if (error instanceof Error && error.message === 'OUT_OF_CREDITS') {
-        throw new InsufficientPermissionException('ขออภัยครับ ดูเหมือนเครดิตของคุณจะหมดแล้ว 😊 สามารถเติมเครดิตเพื่อใช้งาน Peep AI ต่อได้ทันทีเลยนะครับ')
-      }
-      throw error
+    const docRef = db.collection('chats').doc(messageId)
+    const doc = await docRef.get()
+
+    if (!doc.exists) {
+      return c.json({ error: 'Chat message not found.' }, 404)
     }
+
+    const data = doc.data()
+    if (data?.user_id !== userId) {
+      return c.json({ error: 'You do not have permission to update this message.' }, 403)
+    }
+
+    const messageStr = data.message || ''
+    if (!messageStr.startsWith('{') || !messageStr.endsWith('}')) {
+      return c.json({ error: 'Message is not an interactive card.' }, 400)
+    }
+
+    let parsed: any
+    try {
+      parsed = JSON.parse(messageStr)
+    } catch {
+      return c.json({ error: 'Failed to parse card data.' }, 400)
+    }
+
+    if (parsed.type !== 'mood_card') {
+      return c.json({ error: 'Message is not a mood card.' }, 400)
+    }
+
+    if (parsed.selected_mood !== null && parsed.selected_mood !== undefined) {
+      return c.json({ error: 'You have already submitted your mood for this card.' }, 400)
+    }
+
+    parsed.selected_mood = mood
+    await docRef.update({
+      message: JSON.stringify(parsed),
+    })
+
+    const dateStr = getLocalTime().format('YYYY-MM-DD')
+    const now = getUtcTime().toDate()
+    const moodDocRef = db.collection('user_moods').doc()
+    await moodDocRef.set({
+      uuid: moodDocRef.id,
+      user_id: userId,
+      mood,
+      note: 'บันทึกอารมณ์ผ่านการกดการ์ดประจำวันจ้า ☁️✨',
+      date: dateStr,
+      created_at: now,
+    })
+
+    return c.json<TSuccessResponse>(
+      successResponseSchema.parse({
+        success: true,
+        message: 'อัปเดตอารมณ์เรียบร้อยแล้วจ้า!',
+      }),
+    )
   }
 }
+

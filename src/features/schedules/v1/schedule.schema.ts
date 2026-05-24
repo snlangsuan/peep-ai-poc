@@ -1,47 +1,51 @@
-import { paginationFilterDescType, paginationFilterSchema } from '#/common/schemas/request.schema'
 import { z } from 'zod'
-import { dateTimeType, dateType } from '#/common/schemas/share.schema'
-import { paginationMetadataSchema } from '~/src/common/schemas/response.schema'
 
-export const createScheduleSchema = z.object({
-  title: z.string().describe('The title of the schedule.'),
-  location: z.string().optional().describe('The location of the schedule.'),
-  date: z.string().describe('The date of the schedule (YYYY-MM-DD).'),
-  time: z.string().optional().describe('The time of the schedule (HH:mm).'),
-  description: z.string().optional().describe('Optional description of the schedule.'),
-  remind_before_minutes: z.number().int().min(0).default(10).describe('Minutes before the schedule to be reminded.'),
+import { paginationFilterSchema } from '#/common/schemas/request.schema'
+import { paginationMetadataSchema } from '#/common/schemas/response.schema'
+import { dateTimeType } from '#/common/schemas/share.schema'
+
+export const scheduleCreatePayloadSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+  description: z.string().optional(),
+  location: z.string().optional(),
+  scheduled_at: z.string().datetime('scheduled_at must be a valid ISO datetime string'),
+})
+
+export const scheduleUpdatePayloadSchema = z.object({
+  title: z.string().min(1, 'Title must not be empty').optional(),
+  description: z.string().optional(),
+  location: z.string().optional(),
+  scheduled_at: z.string().datetime('scheduled_at must be a valid ISO datetime string').optional(),
 })
 
 export const scheduleResponseSchema = z.object({
-  id: z.string(),
-  created_by: z.string(),
-  title: z.string(),
-  location: z.string().nullish(),
-  date: z.date().or(z.string()),
-  time: z.string().nullish(),
-  scheduled_at: z.date().or(z.string()),
-  remind_at: z.date().or(z.string()).nullish(),
-  description: z.string().nullish(),
-  created_at: z.date().or(z.string()),
-  updated_at: z.date().or(z.string()),
-  remind_before_minutes: z.number().default(10),
-  notified: z.boolean().default(false),
+  uuid: z.string(),
+  userId: z.string(),
+  scheduled_at: z.string(),
+  before_sent_at: z.string().optional().nullable(),
+  sent_at: z.string().optional().nullable(),
+  payload: z.object({
+    message: z.string(),
+    type: z.string(),
+    title: z.string(),
+    description: z.string().optional().nullable(),
+    location: z.string().optional().nullable(),
+  }),
+  createdAt: z.string(),
+  updatedAt: z.string(),
 })
 
-export const scheduleListResponseSchema = z.object({
-  metadata: paginationMetadataSchema,
+export const scheduleFilterPayloadSchema = paginationFilterSchema.extend({
+  start_date: dateTimeType.optional(),
+  end_date: dateTimeType.optional(),
+  sort: z.string().default('scheduled_at'),
+})
+
+export const scheduleItemResponseSchema = z.object({
   items: z.array(scheduleResponseSchema),
+  metadata: paginationMetadataSchema,
 })
 
-export const scheduleListFilterSchema = paginationFilterSchema.extend({
-  sort: z.enum(['created_at', 'date', 'time', 'scheduled_at']).default('scheduled_at').optional(),
-  desc: paginationFilterDescType.default(false).optional(),
-  start_date: dateTimeType.optional().describe('The start date and time for filtering (YYYY-MM-DD HH:mm).'),
-  end_date: dateTimeType.optional().describe('The end date and time for filtering (YYYY-MM-DD HH:mm).'),
-})
-
-export const updateScheduleSchema = createScheduleSchema.partial()
-
-export const scheduleIdParamSchema = z.object({
-  id: z.string().describe('The ID of the schedule.'),
+export const scheduleParamPayloadSchema = z.object({
+  id: z.uuid('Invalid UUID format'),
 })

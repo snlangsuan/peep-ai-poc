@@ -19,12 +19,3 @@ export const paginationFilterSchema = z.object({
   ...paginationFilterOffsetSchema.shape,
   ...paginationFilterOrderSchema.shape,
 })
-
-export const dateFilterType = z
-  .string()
-  .regex(/\d{4}-\d{2}-\d{2}/)
-  .meta({ example: '2026-04-25' })
-export const dateTimeFilterType = z
-  .string()
-  .regex(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/)
-  .meta({ example: '2026-04-25 10:37:44' })

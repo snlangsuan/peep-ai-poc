@@ -1,19 +1,28 @@
-import { z } from 'zod'
+import type { z } from 'zod'
 
 import type {
-  chatListFilterSchema,
-  chatListResponseSchema,
+  chatFilterPayloadSchema,
+  chatCreatePayloadSchema,
   chatResponseSchema,
-  chatResponseWithContentSchema,
-  chatStreamFilterSchema,
-  sendMessageSchema,
-  chatActionRequestBodyPayloadSchema,
+  chatItemResponseSchema,
+  chatSseEventSchema,
+  chatActionPayloadSchema,
+  chatMoodUpdatePayloadSchema,
 } from '#/features/chats/v1/chat.schema'
 
-export type TSendMessage = z.infer<typeof sendMessageSchema>
+export type TChatFilterPayload = z.infer<typeof chatFilterPayloadSchema>
+export type TChatCreatePayload = z.infer<typeof chatCreatePayloadSchema>
 export type TChatResponse = z.infer<typeof chatResponseSchema>
-export type TChatResponseWithContent = z.infer<typeof chatResponseWithContentSchema>
-export type TChatListResponse = z.infer<typeof chatListResponseSchema>
-export type TChatListFilter = z.infer<typeof chatListFilterSchema>
-export type TChatStreamFilter = z.infer<typeof chatStreamFilterSchema>
-export type TChatActionRequestBodyPayload = z.infer<typeof chatActionRequestBodyPayloadSchema>
+export type TChatItemResponse = z.infer<typeof chatItemResponseSchema>
+export type TChatSseEvent = z.infer<typeof chatSseEventSchema>
+export type TChatActionPayload = z.infer<typeof chatActionPayloadSchema>
+export type TChatMoodUpdatePayload = z.infer<typeof chatMoodUpdatePayloadSchema>
+
+
+export type TChatRawResponse = {
+  id?: string
+  user_id?: string
+  sender_id?: string
+  message?: string
+  created_at?: Date | string
+}

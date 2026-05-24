@@ -1,6 +1,7 @@
 import { GoogleGenAI, type GenerateContentResponse, type Content, type Tool } from '@google/genai'
-import { envVariables } from '#/factory'
+
 import { logger } from '#/common/libs/logger.lib'
+import { envVariables } from '#/factory'
 
 export class AIService {
   private client: GoogleGenAI
@@ -31,7 +32,7 @@ export class AIService {
   ): Promise<GenerateContentResponse> {
     try {
       const modelName = options?.model || envVariables.GOOGLE_GEMINI_CHAT_MODEL
-      
+
       const response = await this.client.models.generateContent({
         model: modelName,
         contents,
@@ -66,7 +67,9 @@ export class AIService {
    * Summary Model: Focused on analyzing and synthesizing data
    */
   async summarize(text: string, context?: string): Promise<string> {
-    const systemInstruction = context ? `Context: ${context}\nSummarize the following information clearly and concisely.` : 'Summarize the following information clearly and concisely.'
+    const systemInstruction = context
+      ? `Context: ${context}\nSummarize the following information clearly and concisely.`
+      : 'Summarize the following information clearly and concisely.'
     const response = await this.generate([{ role: 'user', parts: [{ text }] }], {
       model: envVariables.GOOGLE_GEMINI_CHAT_MODEL,
       systemInstruction,
@@ -78,11 +81,11 @@ export class AIService {
   /**
    * Extractor Model: Specialized in structured data extraction
    */
-  async extract(text: string, options: { targetInfo?: string, prompt?: string, json?: boolean }): Promise<string> {
-    const systemInstruction = options.targetInfo 
+  async extract(text: string, options: { targetInfo?: string; prompt?: string; json?: boolean }): Promise<string> {
+    const systemInstruction = options.targetInfo
       ? `Extract the following information from the text: ${options.targetInfo}. Respond ONLY with the requested data, preferably in a structured format.`
       : undefined
-    
+
     const promptText = options.prompt || text
 
     const response = await this.generate([{ role: 'user', parts: [{ text: promptText }] }], {

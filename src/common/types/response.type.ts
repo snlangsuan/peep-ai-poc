@@ -6,7 +6,7 @@ import type {
   httpErrorResponseSchema,
   paginationMetadataSchema,
   successResponseSchema,
-} from '../schemas/response.schema'
+} from '#/common/schemas/response.schema'
 
 export enum EHttpStatusCode {
   SUCCESS = 200,

@@ -1,10 +1,9 @@
 export enum ERouteTag {
   HEALTH = 'Health',
-  EXPENSE = 'Expense',
+  USER = 'User',
   SCHEDULE = 'Schedule',
-  SUMMARY = 'Summary',
-  MESSAGE = 'Message',
-  UID = 'UID',
+  TODO = 'Todo',
+  EXPENSE = 'Expense',
   CHAT = 'Chat',
-  REMINDER = 'Reminder',
+  UID = 'Uid',
 }

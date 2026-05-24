@@ -1,39 +1,197 @@
+import InsufficientPermissionException from '#/common/exceptions/insufficient.permission.exception'
+import ObjectNotFoundException from '#/common/exceptions/object.not.found.exception'
+import { getUtcTime } from '#/common/utils/datetime.util'
+import { getUUID } from '#/common/utils/helper.util'
+
 import type { ScheduleRepository } from '#/features/schedules/v1/schedule.repository'
 import type {
-  TCreateSchedule,
-  TScheduleListFilter,
-  TScheduleListResponse,
+  TScheduleCreatePayload,
   TScheduleResponse,
+  TScheduleUpdatePayload,
+  TScheduleFilterPayload,
+  TScheduleItemResponse,
+  TScheduleCreateInput,
 } from '#/features/schedules/v1/schedule.type'
 
 export class ScheduleService {
-  constructor(private readonly scheduleRepository: ScheduleRepository) {}
+  private repository: ScheduleRepository
 
-  async create(user_id: string, data: TCreateSchedule): Promise<TScheduleResponse> {
-    return this.scheduleRepository.create(user_id, data)
+  constructor(repository: ScheduleRepository) {
+    this.repository = repository
   }
 
-  async list(user_id: string, filter: TScheduleListFilter): Promise<TScheduleListResponse> {
-    return this.scheduleRepository.list(user_id, filter)
+  async create(userId: string, input: TScheduleCreatePayload): Promise<TScheduleResponse> {
+    const uuid = getUUID()
+    const now = getUtcTime().toISOString()
+
+    const newSchedule: TScheduleCreateInput = {
+      uuid,
+      user_id: userId,
+      scheduled_at: input.scheduled_at,
+      before_sent_at: null,
+      sent_at: null,
+      payload: {
+        message: input.title,
+        type: 'user_schedule',
+        title: input.title,
+        description: input.description ?? null,
+        location: input.location ?? null,
+      },
+      created_at: now,
+      updated_at: now,
+    }
+
+    await this.repository.create(newSchedule)
+
+    return {
+      uuid: newSchedule.uuid,
+      userId: newSchedule.user_id,
+      scheduled_at: newSchedule.scheduled_at,
+      before_sent_at: null,
+      sent_at: null,
+      payload: {
+        message: newSchedule.payload.message,
+        type: newSchedule.payload.type,
+        title: newSchedule.payload.title,
+        description: newSchedule.payload.description ?? null,
+        location: newSchedule.payload.location ?? null,
+      },
+      createdAt: newSchedule.created_at,
+      updatedAt: newSchedule.updated_at,
+    }
   }
 
-  async get(user_id: string, id: string): Promise<TScheduleResponse | null> {
-    return this.scheduleRepository.getById(user_id, id)
+  async getSchedule(userId: string, uuid: string): Promise<TScheduleResponse> {
+    const schedule = await this.repository.findById(uuid)
+
+    if (!schedule) {
+      throw new ObjectNotFoundException('Schedule not found.')
+    }
+
+    if (schedule.userId !== userId) {
+      throw new InsufficientPermissionException('You do not have permission to access this schedule.')
+    }
+
+    return {
+      uuid: schedule.uuid,
+      userId: schedule.userId,
+      scheduled_at: schedule.scheduled_at,
+      before_sent_at: schedule.before_sent_at ?? null,
+      sent_at: schedule.sent_at ?? null,
+      payload: {
+        message: schedule.payload.message,
+        type: schedule.payload.type,
+        title: schedule.payload.title,
+        description: schedule.payload.description ?? null,
+        location: schedule.payload.location ?? null,
+      },
+      createdAt: schedule.createdAt,
+      updatedAt: schedule.updatedAt,
+    }
   }
 
-  async update(user_id: string, id: string, data: Partial<TCreateSchedule>): Promise<TScheduleResponse | null> {
-    return this.scheduleRepository.update(user_id, id, data)
+  async getSchedules(userId: string, filter?: Partial<TScheduleFilterPayload>): Promise<TScheduleItemResponse> {
+    const { data, total } = await this.repository.findByUserId(userId, filter)
+    const limit = filter?.limit ?? 25
+    const page = filter?.page ?? 1
+
+    return {
+      items: data.map((schedule) => ({
+        uuid: schedule.uuid,
+        userId: schedule.userId,
+        scheduled_at: schedule.scheduled_at,
+        before_sent_at: schedule.before_sent_at ?? null,
+        sent_at: schedule.sent_at ?? null,
+        payload: {
+          message: schedule.payload.message,
+          type: schedule.payload.type,
+          title: schedule.payload.title,
+          description: schedule.payload.description ?? null,
+          location: schedule.payload.location ?? null,
+        },
+        createdAt: schedule.createdAt,
+        updatedAt: schedule.updatedAt,
+      })),
+      metadata: {
+        total,
+        count: data.length,
+        page,
+        limit,
+      },
+    }
   }
 
-  async delete(user_id: string, id: string): Promise<boolean> {
-    return this.scheduleRepository.delete(user_id, id)
+  async update(userId: string, uuid: string, input: TScheduleUpdatePayload): Promise<TScheduleResponse> {
+    const schedule = await this.repository.findById(uuid)
+
+    if (!schedule) {
+      throw new ObjectNotFoundException('Schedule not found.')
+    }
+
+    if (schedule.userId !== userId) {
+      throw new InsufficientPermissionException('You do not have permission to access this schedule.')
+    }
+
+    const fields: Partial<TScheduleCreateInput> = {
+      updated_at: getUtcTime().toISOString(),
+    }
+
+    if (input.scheduled_at !== undefined) {
+      fields.scheduled_at = input.scheduled_at
+      if (getUtcTime(input.scheduled_at).isAfter(getUtcTime())) {
+        fields.before_sent_at = null
+        fields.sent_at = null
+      }
+    }
+
+    const mergedTitle = input.title !== undefined ? input.title : schedule.payload.title
+    const mergedDescription = input.description !== undefined ? input.description : schedule.payload.description
+    const mergedLocation = input.location !== undefined ? input.location : schedule.payload.location
+
+    fields.payload = {
+      message: mergedTitle,
+      type: 'user_schedule',
+      title: mergedTitle,
+      description: mergedDescription ?? null,
+      location: mergedLocation ?? null,
+    }
+
+    await this.repository.update(uuid, fields)
+
+    const updated = await this.repository.findById(uuid)
+    if (!updated) {
+      throw new ObjectNotFoundException('Schedule not found after update.')
+    }
+
+    return {
+      uuid: updated.uuid,
+      userId: updated.userId,
+      scheduled_at: updated.scheduled_at,
+      before_sent_at: updated.before_sent_at ?? null,
+      sent_at: updated.sent_at ?? null,
+      payload: {
+        message: updated.payload.message,
+        type: updated.payload.type,
+        title: updated.payload.title,
+        description: updated.payload.description ?? null,
+        location: updated.payload.location ?? null,
+      },
+      createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
+    }
   }
 
-  async listPendingSchedules(): Promise<TScheduleResponse[]> {
-    return this.scheduleRepository.listPending()
-  }
+  async delete(userId: string, uuid: string): Promise<void> {
+    const schedule = await this.repository.findById(uuid)
 
-  async markAsNotified(id: string): Promise<void> {
-    await this.scheduleRepository.markAsNotified(id)
+    if (!schedule) {
+      throw new ObjectNotFoundException('Schedule not found.')
+    }
+
+    if (schedule.userId !== userId) {
+      throw new InsufficientPermissionException('You do not have permission to access this schedule.')
+    }
+
+    await this.repository.delete(uuid)
   }
 }
