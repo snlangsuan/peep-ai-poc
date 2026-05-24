@@ -46,7 +46,7 @@ export class FortuneTellingTool implements IChatTool {
             birthdate: storedBirthdate,
             type: 'action',
             link: 'peep://fortune-telling',
-            message: `โหลดวันเดือนปีเกิดของคุณ (${storedBirthdate}) สำเร็จแล้วนะปี๊บ! พร้อมเปิดหน้าทำนายดวงชะตาให้แล้วจ้า!`,
+            message: `โหลดวันเดือนปีเกิดของคุณ (${storedBirthdate}) สำเร็จแล้วจ้า! พร้อมเปิดหน้าทำนายดวงชะตาให้แล้วน้า!`,
           })
         }
 
@@ -54,7 +54,7 @@ export class FortuneTellingTool implements IChatTool {
         return JSON.stringify({
           status: 'need_birthdate',
           has_birthdate: false,
-          message: 'น้องคลาวดี้ยังไม่ทราบวันเดือนปีเกิดของคุณเลยจ้า ช่วยบอกวันเดือนปีเกิดของคุณ (ในรูปแบบ เช่น 25 ธันวาคม 2538 หรือ 1995-12-25) ให้น้องหน่อยนะปี๊บ! จะได้นำไปดูดวงชะตาได้แม่นยำจ้า',
+          message: 'น้องคลาวดี้ยังไม่ทราบวันเดือนปีเกิดของคุณเลยจ้า ช่วยบอกวันเดือนปีเกิดของคุณ (ในรูปแบบ เช่น 25 ธันวาคม 2538 หรือ 1995-12-25) ให้น้องหน่อยนะจ๊ะ! จะได้นำไปดูดวงชะตาได้แม่นยำจ้า',
         })
       }
 
@@ -79,7 +79,7 @@ export class FortuneTellingTool implements IChatTool {
           birthdate,
           type: 'action',
           link: 'peep://fortune-telling',
-          message: `บันทึกวันเกิดเป็นวันที่ ${birthdate} สำเร็จแล้วจ้า! ยินดีต้อนรับเข้าสู่หน้าทำนายดวงชะตาของคุณนะปี๊บ!`,
+          message: `บันทึกวันเกิดเป็นวันที่ ${birthdate} สำเร็จแล้วจ้า! ยินดีต้อนรับเข้าสู่หน้าทำนายดวงชะตาของคุณนะจ๊ะ!`,
         })
       }
 

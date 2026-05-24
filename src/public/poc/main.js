@@ -408,7 +408,7 @@ function appendMessageBubble(messageObj) {
       btnCard.onclick = () => handleDeepLinkClick(part.link);
       
       let icon = '🔗';
-      let label = 'คลิกเพื่อดูรายละเอียดจ้าปี๊บ';
+      let label = 'คลิกเพื่อดูรายละเอียดได้เลยจ้า';
       if (part.link.includes('fortune-telling')) { icon = '🔮'; label = 'ดูผลทำนายดวงชะตาประจำวัน'; }
       else if (part.link.includes('todo')) { icon = '✅'; label = 'เปิดดูรายการสิ่งที่ต้องทำ'; }
       else if (part.link.includes('schedule')) { icon = '📅'; label = 'เปิดดูตารางงานของคุณปี๊บ'; }
@@ -530,12 +530,12 @@ async function triggerCloudyAction(action) {
 
   let label = '';
   switch(action) {
-    case 'expense': label = 'ขอดูรายการค่าใช้จ่ายของวันนี้ให้หน่อยนะปี๊บ'; break;
-    case 'schedule': label = 'ขอดูรายการกำหนดการของวันนี้ให้หน่อยนะปี๊บ'; break;
-    case 'todo': label = 'ขอดูรายการสิ่งที่ต้องทำของวันนี้ให้หน่อยนะปี๊บ'; break;
-    case 'mood': label = 'ช่วยสรุปอารมณ์ (mood) ของผมในช่วง 7 วันล่าสุดให้หน่อยนะปี๊บ'; break;
-    case 'summary': label = 'ช่วยวิเคราะห์สรุปข้อมูลภาพรวมของโครงการให้หน่อยนะปี๊บ'; break;
-    case 'fortune-telling': label = 'ช่วยทำนายดวงชะตาให้ผมหน่อยนะปี๊บ'; break;
+    case 'expense': label = 'ขอดูรายการค่าใช้จ่ายของวันนี้ให้หน่อยนะจ๊ะ'; break;
+    case 'schedule': label = 'ขอดูรายการกำหนดการของวันนี้ให้หน่อยจ้า'; break;
+    case 'todo': label = 'ขอดูรายการสิ่งที่ต้องทำของวันนี้ให้หน่อยนะจ๊ะ'; break;
+    case 'mood': label = 'ช่วยสรุปอารมณ์ (mood) ของผมในช่วง 7 วันล่าสุดให้หน่อยนะจ๊ะ'; break;
+    case 'summary': label = 'ช่วยวิเคราะห์สรุปข้อมูลภาพรวมของโครงการให้หน่อยนะจ๊ะ'; break;
+    case 'fortune-telling': label = 'ช่วยทำนายดวงชะตาให้ผมหน่อยนะจ๊ะ'; break;
   }
 
   // Render locally first

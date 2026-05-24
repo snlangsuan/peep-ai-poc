@@ -158,22 +158,22 @@ export class ChatController {
     let promptText = ''
     switch (action) {
       case 'expense':
-        promptText = 'ขอดูรายการค่าใช้จ่ายของวันนี้ให้หน่อยนะปี๊บ'
+        promptText = 'ขอดูรายการค่าใช้จ่ายของวันนี้ให้หน่อยนะจ๊ะ'
         break
       case 'schedule':
-        promptText = 'ขอดูรายการกำหนดการของวันนี้ให้หน่อยนะปี๊บ'
+        promptText = 'ขอดูรายการกำหนดการของวันนี้ให้หน่อยจ้า'
         break
       case 'todo':
-        promptText = 'ขอดูรายการสิ่งที่ต้องทำของวันนี้ให้หน่อยนะปี๊บ'
+        promptText = 'ขอดูรายการสิ่งที่ต้องทำของวันนี้ให้หน่อยนะจ๊ะ'
         break
       case 'mood':
-        promptText = 'ช่วยสรุปอารมณ์ (mood) ของผมในช่วง 7 วันล่าสุดให้หน่อยนะปี๊บ'
+        promptText = 'ช่วยสรุปอารมณ์ (mood) ของผมในช่วง 7 วันล่าสุดให้หน่อยนะจ๊ะ'
         break
       case 'summary':
-        promptText = 'ช่วยวิเคราะห์สรุปข้อมูลภาพรวมของโครงการให้หน่อยนะปี๊บ'
+        promptText = 'ช่วยวิเคราะห์สรุปข้อมูลภาพรวมของโครงการให้หน่อยนะจ๊ะ'
         break
       case 'fortune-telling':
-        promptText = 'ช่วยทำนายดวงชะตาให้ผมหน่อยนะปี๊บ'
+        promptText = 'ช่วยทำนายดวงชะตาให้ผมหน่อยนะจ๊ะ'
         break
     }
 
