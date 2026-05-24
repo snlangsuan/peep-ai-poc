@@ -8,7 +8,7 @@ import type { Bindings, Variables } from '#/common/types/app.type'
 
 export const registerV1Docs = (app: Hono<{ Bindings: Bindings; Variables: Variables }>) => {
   app.get(
-    '/api/v1/openapi',
+    '/poc/api/v1/openapi',
     openAPIRouteHandler(app, {
       documentation: {
         components: {
@@ -37,11 +37,11 @@ export const registerV1Docs = (app: Hono<{ Bindings: Bindings; Variables: Variab
   )
 
   app.get(
-    '/api/v1/docs',
+    '/poc/api/v1/docs',
     Scalar({
       theme: 'purple',
       pageTitle: DOC_PAGE_TITLE,
-      url: '/api/v1/openapi',
+      url: '/poc/api/v1/openapi',
     }),
   )
 }
