@@ -49,4 +49,17 @@ export class UserController {
     const result = await this.service.getUserInfoById(userId)
     return c.json<TUserResponse>(userResponseSchema.parse(result))
   }
+
+  addCredits = async <E extends { Bindings: Bindings; Variables: Variables }, P extends string, I extends Input>(
+    c: Context<E, P, I>,
+  ): Promise<Response> => {
+    const userId = c.get('user_id')
+    const body = await c.req.json()
+    const amount = Number(body.amount)
+    if (isNaN(amount) || amount <= 0) {
+      return c.json({ error: 'Invalid credit amount.' }, 400)
+    }
+    const newCredit = await this.service.addCredits(userId, amount)
+    return c.json({ success: true, credit: newCredit })
+  }
 }

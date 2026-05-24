@@ -81,7 +81,7 @@
           </div>
           <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
             <span class="text-[12.5px] text-white/50">now</span>
-            <div id="credit-badge" class="min-w-[22px] h-[22px] rounded-full bg-brandCoral text-white text-[11px] font-bold flex justify-center items-center px-1.5 shadow-[0_3px_8px_rgba(232,92,65,0.35)]" title="Credits Left">100</div>
+            <div id="credit-badge" class="min-w-[22px] h-[22px] rounded-full bg-brandCoral text-white text-[11px] font-bold flex justify-center items-center px-1.5 shadow-[0_3px_8px_rgba(232,92,65,0.35)]" title="Credits Left">…</div>
           </div>
         </div>
 
@@ -203,11 +203,27 @@
           </div>
         </div>
 
-        <div class="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1">
-          <span class="text-[11px] text-white/50 uppercase font-semibold">Credits:</span>
-          <span id="chat-credits-counter" class="text-xs font-bold text-brandCoral">100</span>
+        <div class="flex items-center gap-2">
+          <div onclick="openCreditModal()" class="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1 cursor-pointer transition-all duration-300 hover:bg-white/15 hover:scale-105 active:scale-95 shadow-sm" title="Buy Credits">
+            <span class="text-[11px] text-white/50 uppercase font-semibold">Credits:</span>
+            <span id="chat-credits-counter" class="text-xs font-bold text-brandCoral flex items-center gap-0.5">
+              <!-- Loading spinner shown until credits are fetched -->
+              <svg id="credits-loading-spinner" class="animate-spin" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+              </svg>
+              <span id="credits-value"></span>
+            </span>
+          </div>
+
+          <!-- Quick Action Dropdown Trigger (mdi-view-grid-outline) -->
+          <button onclick="toggleQuickMenu(event)" class="w-9 h-9 flex justify-center items-center active:scale-95 transition-all text-white/60 hover:text-white" title="Quick Commands">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3,3H11V11H3V3M5,5V9H9V5H5M3,13H11V21H3V13M5,15V19H9V15H5M13,3H21V11H13V3M15,5V9H19V5H15M13,13H21V21H13V13M15,15V19H19V15H15Z"/>
+            </svg>
+          </button>
         </div>
       </div>
+
 
       <!-- Messages Viewport Scroll Container -->
       <div id="chat-messages-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-4.5 scrollbar-none pb-4">
@@ -374,6 +390,159 @@
             Sign Out
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- DYNAMIC CREDIT PACKAGES MODAL -->
+    <div id="credit-modal" class="hidden absolute inset-0 z-50 bg-[#06040a]/85 backdrop-blur-md flex items-center justify-center p-5 select-none">
+      <div class="w-full max-w-[340px] bg-[#140f26]/95 border border-white/10 rounded-[28px] p-6 shadow-2xl relative flex flex-col">
+        <!-- Close Button -->
+        <button onclick="closeCreditModal()" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/5 flex justify-center items-center hover:bg-white/10 transition-colors">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+
+        <h2 class="text-lg font-bold text-white mb-1 flex items-center gap-1.5">Your Credits 💳</h2>
+        <p class="text-xs text-white/50 mb-4">เติมเครดิตเพื่อพูดคุยกับคลาวดี้ต่อได้ยาวๆ เลยนะจ๊ะ! ☁️✨</p>
+        
+        <!-- Large Glowing Balance display -->
+        <div class="relative bg-white/5 border border-white/5 rounded-2xl p-4 flex flex-col items-center justify-center gap-1 mb-5 overflow-hidden">
+          <div class="absolute -right-6 -bottom-6 w-20 h-20 bg-brandCoral/10 rounded-full blur-xl"></div>
+          <span class="text-xs text-white/40 uppercase font-semibold tracking-wider">Remaining Balance</span>
+          <div class="flex items-baseline gap-1 mt-0.5">
+            <span id="credit-modal-balance" class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-brandCoral to-brandPurple drop-shadow-[0_4px_12px_rgba(232,92,65,0.2)]">100</span>
+            <span class="text-sm font-semibold text-white/70">Credits</span>
+          </div>
+        </div>
+
+        <div class="text-xs font-semibold text-white/45 mb-2.5 uppercase tracking-wide px-1">Choose a Package</div>
+        
+        <!-- Package choices container -->
+        <div class="flex flex-col gap-2.5 mb-5 max-h-[220px] overflow-y-auto pr-0.5 scrollbar-none">
+          <!-- Package 1 -->
+          <div onclick="purchaseCreditPackage(50, 29)" class="group relative bg-[#1c1635]/80 border border-white/5 rounded-2xl p-3 flex items-center justify-between cursor-pointer transition-all duration-300 hover:border-brandCoral/30 hover:bg-[#251e45] hover:-translate-y-0.5 active:translate-y-0 shadow-md">
+            <div class="flex items-center gap-3">
+              <span class="text-2xl select-none">🥉</span>
+              <div class="flex flex-col">
+                <span class="text-xs font-bold text-white group-hover:text-brandCoral transition-colors">Starter Pack</span>
+                <span class="text-[10px] text-white/50">+50 Credits</span>
+              </div>
+            </div>
+            <div class="bg-brandCoral/10 border border-brandCoral/20 rounded-xl px-3 py-1.5 text-xs font-bold text-brandCoral group-hover:bg-brandCoral group-hover:text-white transition-all shadow-sm">
+              ฿29
+            </div>
+          </div>
+
+          <!-- Package 2 -->
+          <div onclick="purchaseCreditPackage(200, 99)" class="group relative bg-[#1c1635]/80 border border-brandCoral/30 rounded-2xl p-3 flex items-center justify-between cursor-pointer transition-all duration-300 hover:border-brandPurple/40 hover:bg-[#251e45] hover:-translate-y-0.5 active:translate-y-0 shadow-lg">
+            <!-- Glow badge -->
+            <div class="absolute -top-2 left-6 bg-gradient-to-r from-brandCoral to-brandPurple text-white text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shadow-md select-none">POPULAR</div>
+            <div class="flex items-center gap-3">
+              <span class="text-2xl select-none">🥈</span>
+              <div class="flex flex-col">
+                <span class="text-xs font-bold text-white group-hover:text-brandPurple transition-colors">Pro Lifesync</span>
+                <span class="text-[10px] text-white/50">+200 Credits</span>
+              </div>
+            </div>
+            <div class="bg-gradient-to-r from-brandCoral to-brandPurple rounded-xl px-3 py-1.5 text-xs font-bold text-white group-hover:scale-[1.03] transition-all shadow-md">
+              ฿99
+            </div>
+          </div>
+
+          <!-- Package 3 -->
+          <div onclick="purchaseCreditPackage(1000, 399)" class="group relative bg-[#1c1635]/80 border border-white/5 rounded-2xl p-3 flex items-center justify-between cursor-pointer transition-all duration-300 hover:border-yellow-500/30 hover:bg-[#251e45] hover:-translate-y-0.5 active:translate-y-0 shadow-md">
+            <div class="flex items-center gap-3">
+              <span class="text-2xl select-none">🥇</span>
+              <div class="flex flex-col">
+                <span class="text-xs font-bold text-white group-hover:text-yellow-500 transition-colors">Cloudy Ultimate</span>
+                <span class="text-[10px] text-white/50">+1000 Credits</span>
+              </div>
+            </div>
+            <div class="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-3 py-1.5 text-xs font-bold text-yellow-500 group-hover:bg-yellow-500 group-hover:text-white transition-all shadow-sm">
+              ฿399
+            </div>
+          </div>
+        </div>
+
+        <button onclick="closeCreditModal()" class="w-full py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-semibold hover:bg-white/10 transition-colors text-white">
+          Close
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick Menu Dropdown (hoisted out of chat-view to avoid overflow-hidden clipping) -->
+    <div id="quick-menu-dropdown"
+      style="max-height:0;overflow:hidden;opacity:0;pointer-events:none;"
+      class="absolute top-[64px] left-0 right-0 z-[55] bg-[#0d0918]/97 shadow-[0_20px_40px_rgba(0,0,0,0.5)] px-5 backdrop-blur-3xl select-none"
+      aria-hidden="true">
+      <!-- Header label -->
+      <div class="text-[10px] font-bold tracking-[0.2em] text-white/30 uppercase mb-4">Quick Commands</div>
+      <!-- 3-col × 2-row grid -->
+      <div class="grid grid-cols-3 gap-x-3 gap-y-4">
+
+        <!-- Expense -->
+        <button onclick="clickQuickMenuItem('expense')" class="flex flex-col items-center gap-2 active:scale-[0.90] transition-transform duration-100 group" title="Expense">
+          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#e85c41] via-[#c4406a] to-[#9b3ab8] flex items-center justify-center shadow-[0_6px_20px_rgba(232,92,65,0.4)] group-hover:shadow-[0_8px_28px_rgba(232,92,65,0.55)] group-active:shadow-none transition-shadow">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="5" width="20" height="14" rx="3"/><line x1="2" y1="10" x2="22" y2="10"/>
+            </svg>
+          </div>
+          <span class="text-[12px] font-medium text-white/75">Expense</span>
+        </button>
+
+        <!-- Schedule -->
+        <button onclick="clickQuickMenuItem('schedule')" class="flex flex-col items-center gap-2 active:scale-[0.90] transition-transform duration-100 group" title="Schedule">
+          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#e85c41] via-[#c4406a] to-[#9b3ab8] flex items-center justify-center shadow-[0_6px_20px_rgba(155,58,184,0.4)] group-hover:shadow-[0_8px_28px_rgba(155,58,184,0.55)] group-active:shadow-none transition-shadow">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+          </div>
+          <span class="text-[12px] font-medium text-white/75">Schedule</span>
+        </button>
+
+        <!-- To-do -->
+        <button onclick="clickQuickMenuItem('todo')" class="flex flex-col items-center gap-2 active:scale-[0.90] transition-transform duration-100 group" title="To-do">
+          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#e85c41] via-[#c4406a] to-[#9b3ab8] flex items-center justify-center shadow-[0_6px_20px_rgba(155,58,184,0.4)] group-hover:shadow-[0_8px_28px_rgba(155,58,184,0.55)] group-active:shadow-none transition-shadow">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/>
+              <polyline points="4 6 5 7 7 5"/><polyline points="4 12 5 13 7 11"/><polyline points="4 18 5 19 7 17"/>
+            </svg>
+          </div>
+          <span class="text-[12px] font-medium text-white/75">To-do</span>
+        </button>
+
+        <!-- Mood -->
+        <button onclick="clickQuickMenuItem('mood')" class="flex flex-col items-center gap-2 active:scale-[0.90] transition-transform duration-100 group" title="Mood">
+          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#e85c41] via-[#c4406a] to-[#9b3ab8] flex items-center justify-center shadow-[0_6px_20px_rgba(232,92,65,0.4)] group-hover:shadow-[0_8px_28px_rgba(232,92,65,0.55)] group-active:shadow-none transition-shadow">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            </svg>
+          </div>
+          <span class="text-[12px] font-medium text-white/75">Mood</span>
+        </button>
+
+        <!-- Summary -->
+        <button onclick="clickQuickMenuItem('summary')" class="flex flex-col items-center gap-2 active:scale-[0.90] transition-transform duration-100 group" title="Summary">
+          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#e85c41] via-[#c4406a] to-[#9b3ab8] flex items-center justify-center shadow-[0_6px_20px_rgba(155,58,184,0.4)] group-hover:shadow-[0_8px_28px_rgba(155,58,184,0.55)] group-active:shadow-none transition-shadow">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+          </div>
+          <span class="text-[12px] font-medium text-white/75">Summary</span>
+        </button>
+
+        <!-- Fortune Telling -->
+        <button onclick="clickQuickMenuItem('fortune-telling')" class="flex flex-col items-center gap-2 active:scale-[0.90] transition-transform duration-100 group" title="Fortune Telling">
+          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#e85c41] via-[#c4406a] to-[#9b3ab8] flex items-center justify-center shadow-[0_6px_20px_rgba(155,58,184,0.4)] group-hover:shadow-[0_8px_28px_rgba(155,58,184,0.55)] group-active:shadow-none transition-shadow">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+          </div>
+          <span class="text-[12px] font-medium text-white/75 text-center leading-tight">Fortune<br>Telling</span>
+        </button>
+
       </div>
     </div>
 

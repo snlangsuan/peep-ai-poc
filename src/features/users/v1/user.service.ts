@@ -86,4 +86,8 @@ export class UserService {
       credit: (userDoc.credit ?? 100) as number,
     }
   }
+
+  async addCredits(userId: string, amount: number): Promise<number> {
+    return this.repository.addCredits(userId, amount)
+  }
 }

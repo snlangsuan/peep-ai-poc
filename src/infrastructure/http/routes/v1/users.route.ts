@@ -22,4 +22,6 @@ usersGroup.post('/login', loginDoc, zValidator('json', userLoginPayloadSchema), 
 
 usersGroup.get('/me', getInfoDoc, authMiddleware(repository), controller.getInfo)
 
+usersGroup.post('/credits', authMiddleware(repository), controller.addCredits)
+
 export default usersGroup

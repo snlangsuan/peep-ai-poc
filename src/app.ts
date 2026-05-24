@@ -36,7 +36,7 @@ if (envVariables.NODE_ENV !== 'production') {
 
 app.route('/poc/api/v1', v1Route)
 
-app.use('/poc/*', serveStatic({ root: 'src/public', rewriteRequestPath: (path) => path.replace('/poc/', '/') }))
+app.use('/poc/*', serveStatic({ root: 'src/public' }))
 
 app.onError(errorHandler)
 app.notFound(notFoundHandler)

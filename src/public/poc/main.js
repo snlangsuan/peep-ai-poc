@@ -2,7 +2,7 @@
 const state = {
   apiKey: localStorage.getItem('x-api-key') || '',
   username: localStorage.getItem('username') || '',
-  credits: 100,
+  credits: null,
   chats: [],
   isThinking: false,
   authMode: 'login', // login | register
@@ -129,7 +129,7 @@ async function handleAuthSubmit(e) {
   try {
     if (state.authMode === 'login') {
       // Send login payload
-      const res = await fetch('/api/v1/users/login', {
+      const res = await fetch('/poc/api/v1/users/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: usernameInput, password: passwordInput })
@@ -151,7 +151,7 @@ async function handleAuthSubmit(e) {
         throw new Error('Passwords do not match.');
       }
 
-      const res = await fetch('/api/v1/users/create', {
+      const res = await fetch('/poc/api/v1/users/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -166,7 +166,7 @@ async function handleAuthSubmit(e) {
       showToast('Account created successfully! Logging in...');
       
       // Call login after creating
-      const loginRes = await fetch('/api/v1/users/login', {
+      const loginRes = await fetch('/poc/api/v1/users/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: usernameInput, password: passwordInput })
@@ -192,20 +192,36 @@ async function handleAuthSubmit(e) {
 
 
 // Fetch dynamic profile credit state
+function setCreditsDisplay(value) {
+  const spinner = document.getElementById('credits-loading-spinner');
+  const creditsVal = document.getElementById('credits-value');
+  const badge = document.getElementById('credit-badge');
+  if (spinner) spinner.style.display = 'none';
+  if (creditsVal) creditsVal.innerText = value;
+  if (badge) badge.innerText = value;
+}
+
 async function fetchUserInfo() {
   if (!state.apiKey) return;
+  // Show spinner, hide any stale value
+  const spinner = document.getElementById('credits-loading-spinner');
+  const creditsVal = document.getElementById('credits-value');
+  if (spinner) spinner.style.display = 'inline-block';
+  if (creditsVal) creditsVal.innerText = '';
   try {
-    const res = await fetch('/api/v1/users/me', {
+    const res = await fetch('/poc/api/v1/users/me', {
       headers: { 'x-api-key': state.apiKey }
     });
     const data = await res.json();
     if (res.ok) {
-      state.credits = data.credit ?? 100;
-      document.getElementById('credit-badge').innerText = state.credits;
-      document.getElementById('chat-credits-counter').innerText = state.credits;
+      state.credits = data.credit ?? 0;
+      setCreditsDisplay(state.credits);
+    } else {
+      setCreditsDisplay('-');
     }
   } catch (err) {
     console.error('Failed to sync profile credits:', err);
+    setCreditsDisplay('-');
   }
 }
 
@@ -276,7 +292,7 @@ async function loadChatHistory() {
   const emptyState = document.getElementById('chat-empty-state');
   
   try {
-    const res = await fetch('/api/v1/chats?limit=50', {
+    const res = await fetch('/poc/api/v1/chats?limit=50', {
       headers: { 'x-api-key': state.apiKey }
     });
     const data = await res.json();
@@ -289,7 +305,9 @@ async function loadChatHistory() {
       items.forEach(el => el.remove());
 
       // Sort by creation date (older first for chat rendering)
-      const sorted = data.items.reverse();
+      const sorted = [...data.items].sort((a, b) => {
+        return new Date(a.created_at) - new Date(b.created_at);
+      });
       sorted.forEach(msg => {
         appendMessageBubble(msg);
       });
@@ -337,10 +355,100 @@ function formatMessageText(text) {
   return esc.replace(/\n/g, '<br>');
 }
 
+// Helper to render plain text message bubbles
+function renderTextMessage(part, isUser) {
+  const pill = document.createElement('div');
+  pill.className = isUser 
+    ? 'bg-gradient-to-br from-brandCoral to-brandCoral/85 border border-brandCoral/10 text-white rounded-[20px] rounded-tr-[4px] p-3 text-sm shadow-md leading-relaxed break-words'
+    : 'bg-[#151025]/85 border border-white/5 text-white/90 rounded-[20px] rounded-tl-[4px] p-3 text-sm shadow-md leading-relaxed break-words';
+  
+  pill.innerHTML = formatMessageText(part.text);
+  return pill;
+}
+
+// Helper to render interactive mood cards
+function renderMoodCardMessage(part, bubbleId) {
+  const card = document.createElement('div');
+  card.className = 'w-full bg-[#18112c]/90 border border-white/10 rounded-2xl p-4 shadow-lg flex flex-col gap-3 mt-1.5';
+  
+  const optionsHtml = part.options.map(mood => {
+    const isSelected = part.selected_mood === mood;
+    const isAnySelected = part.selected_mood !== null && part.selected_mood !== undefined;
+    const btnClass = isSelected 
+      ? 'bg-brandCoral/20 border-brandCoral text-brandCoral shadow-[0_0_12px_rgba(232,92,65,0.25)]' 
+      : 'bg-white/5 border-white/10 text-white/80 hover:bg-white/10 disabled:opacity-60 disabled:hover:bg-white/5';
+    
+    return `
+      <button 
+        onclick="submitUserMood('${bubbleId}', '${mood}')"
+        ${isAnySelected ? 'disabled' : ''}
+        class="py-2.5 px-3 rounded-xl text-xs font-semibold border transition-all ${btnClass}"
+      >${mood}</button>
+    `;
+  }).join('');
+
+  const statusHtml = part.selected_mood 
+    ? `<div class="text-[11px] text-green-400 font-semibold flex items-center gap-1 mt-1 justify-center">
+        <span>✓</span> บันทึกอารมณ์เป็น "${part.selected_mood}" เรียบร้อยจ้า!
+       </div>` 
+    : '';
+
+  card.innerHTML = `
+    <div class="flex items-center gap-2">
+      <span class="text-base">☁️</span>
+      <span class="text-[13.5px] font-bold text-white/90">Daily Mood Check</span>
+    </div>
+    <p class="text-[12.5px] text-white/60">คลาวดี้อยากทราบว่าคุณปี๊บรู้สึกอย่างไรบ้างในวันนี้จ้า?</p>
+    <div class="grid grid-cols-2 gap-2 mt-1.5" id="mood-options-${bubbleId}">
+      ${optionsHtml}
+    </div>
+    ${statusHtml}
+  `;
+  return card;
+}
+
+// Helper to determine deep link details
+function getActionDetails(link) {
+  if (link.includes('fortune-telling')) {
+    return { icon: '🔮', label: 'ดูผลทำนายดวงชะตาประจำวัน' };
+  }
+  if (link.includes('todo')) {
+    return { icon: '✅', label: 'เปิดดูรายการสิ่งที่ต้องทำ' };
+  }
+  if (link.includes('schedule')) {
+    return { icon: '📅', label: 'เปิดดูตารางงานของคุณปี๊บ' };
+  }
+  if (link.includes('expense')) {
+    return { icon: '💰', label: 'เปิดดูสรุปรายรับรายจ่าย' };
+  }
+  return { icon: '🔗', label: 'คลิกเพื่อดูรายละเอียดได้เลยจ้า' };
+}
+
+// Helper to render action card bubbles
+function renderActionMessage(part) {
+  const btnCard = document.createElement('div');
+  btnCard.className = 'w-full bg-[#19142b]/60 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex flex-col gap-2.5 mt-1.5 cursor-pointer hover:bg-white/5 transition-all';
+  btnCard.onclick = () => handleDeepLinkClick(part.link);
+  
+  const { icon, label } = getActionDetails(part.link);
+
+  btnCard.innerHTML = `
+    <div class="flex items-center gap-3">
+      <span class="text-2xl">${icon}</span>
+      <div class="flex-1 flex flex-col">
+        <span class="text-xs font-bold text-white/95">${label}</span>
+        <span class="text-[10px] text-brandCoral font-mono tracking-tight font-medium mt-0.5 truncate">${part.link}</span>
+      </div>
+      <span class="text-xs text-white/40">❯</span>
+    </div>
+  `;
+  return btnCard;
+}
+
 // Dynamically insert message elements into DOM
 function appendMessageBubble(messageObj) {
   const container = document.getElementById('chat-messages-container');
-  const isUser = messageObj.sender_id !== 'cloudy' && messageObj.sender_id !== 'assistant';
+  const isUser = messageObj.sender_id !== 'cloudy' && messageObj.sender_id !== 'assistant' && messageObj.sender_id !== 'bot';
   const bubbleId = messageObj.id;
 
   // Check if duplicate element
@@ -356,75 +464,13 @@ function appendMessageBubble(messageObj) {
   // Iterate through message content blocks
   messageObj.content.forEach(part => {
     if (part.type === 'text') {
-      const pill = document.createElement('div');
-      pill.className = isUser 
-        ? 'bg-gradient-to-br from-brandCoral to-brandCoral/85 border border-brandCoral/10 text-white rounded-[20px] rounded-tr-[4px] p-3 text-sm shadow-md leading-relaxed break-words'
-        : 'bg-[#151025]/85 border border-white/5 text-white/90 rounded-[20px] rounded-tl-[4px] p-3 text-sm shadow-md leading-relaxed break-words';
-      
-      pill.innerHTML = formatMessageText(part.text);
-      contentsDiv.appendChild(pill);
+      contentsDiv.appendChild(renderTextMessage(part, isUser));
     }
     else if (part.type === 'mood_card') {
-      // Interactive Mood Voting card
-      const card = document.createElement('div');
-      card.className = 'w-full bg-[#18112c]/90 border border-white/10 rounded-2xl p-4 shadow-lg flex flex-col gap-3 mt-1.5';
-      
-      card.innerHTML = `
-        <div class="flex items-center gap-2">
-          <span class="text-base">☁️</span>
-          <span class="text-[13.5px] font-bold text-white/90">Daily Mood Check</span>
-        </div>
-        <p class="text-[12.5px] text-white/60">คลาวดี้อยากทราบว่าคุณปี๊บรู้สึกอย่างไรบ้างในวันนี้จ้า?</p>
-        <div class="grid grid-cols-2 gap-2 mt-1.5" id="mood-options-${bubbleId}">
-          ${part.options.map(mood => {
-            const isSelected = part.selected_mood === mood;
-            const isAnySelected = part.selected_mood !== null && part.selected_mood !== undefined;
-            return `
-              <button 
-                onclick="submitUserMood('${bubbleId}', '${mood}')"
-                ${isAnySelected ? 'disabled' : ''}
-                class="py-2.5 px-3 rounded-xl text-xs font-semibold border transition-all ${
-                  isSelected 
-                    ? 'bg-brandCoral/20 border-brandCoral text-brandCoral shadow-[0_0_12px_rgba(232,92,65,0.25)]' 
-                    : 'bg-white/5 border-white/10 text-white/80 hover:bg-white/10 disabled:opacity-60 disabled:hover:bg-white/5'
-                }"
-              >${mood}</button>
-            `;
-          }).join('')}
-        </div>
-        ${part.selected_mood 
-          ? `<div class="text-[11px] text-green-400 font-semibold flex items-center gap-1 mt-1 justify-center">
-              <span>✓</span> บันทึกอารมณ์เป็น "${part.selected_mood}" เรียบร้อยจ้า!
-             </div>` 
-          : ''
-        }
-      `;
-      contentsDiv.appendChild(card);
+      contentsDiv.appendChild(renderMoodCardMessage(part, bubbleId));
     }
     else if (part.type === 'action') {
-      // Action link button card
-      const btnCard = document.createElement('div');
-      btnCard.className = 'w-full bg-[#19142b]/60 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex flex-col gap-2.5 mt-1.5 cursor-pointer hover:bg-white/5 transition-all';
-      btnCard.onclick = () => handleDeepLinkClick(part.link);
-      
-      let icon = '🔗';
-      let label = 'คลิกเพื่อดูรายละเอียดได้เลยจ้า';
-      if (part.link.includes('fortune-telling')) { icon = '🔮'; label = 'ดูผลทำนายดวงชะตาประจำวัน'; }
-      else if (part.link.includes('todo')) { icon = '✅'; label = 'เปิดดูรายการสิ่งที่ต้องทำ'; }
-      else if (part.link.includes('schedule')) { icon = '📅'; label = 'เปิดดูตารางงานของคุณปี๊บ'; }
-      else if (part.link.includes('expense')) { icon = '💰'; label = 'เปิดดูสรุปรายรับรายจ่าย'; }
-
-      btnCard.innerHTML = `
-        <div class="flex items-center gap-3">
-          <span class="text-2xl">${icon}</span>
-          <div class="flex-1 flex flex-col">
-            <span class="text-xs font-bold text-white/95">${label}</span>
-            <span class="text-[10px] text-brandCoral font-mono tracking-tight font-medium mt-0.5 truncate">${part.link}</span>
-          </div>
-          <span class="text-xs text-white/40">❯</span>
-        </div>
-      `;
-      contentsDiv.appendChild(btnCard);
+      contentsDiv.appendChild(renderActionMessage(part));
     }
   });
 
@@ -445,7 +491,7 @@ function appendMessageBubble(messageObj) {
 async function submitUserMood(messageId, mood) {
   if (!state.apiKey) return;
   try {
-    const res = await fetch('/api/v1/chats/mood', {
+    const res = await fetch('/poc/api/v1/chats/mood', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -497,7 +543,7 @@ async function handleChatSubmit(e) {
     state.isThinking = true;
     toggleThinkingIndicator(true);
 
-    const res = await fetch('/api/v1/chats', {
+    const res = await fetch('/poc/api/v1/chats', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -552,7 +598,7 @@ async function triggerCloudyAction(action) {
     state.isThinking = true;
     toggleThinkingIndicator(true);
 
-    const res = await fetch('/api/v1/chats/actions', {
+    const res = await fetch('/poc/api/v1/chats/actions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -584,7 +630,7 @@ async function streamAgentResponse() {
   state.activeStreamReader = controller;
 
   try {
-    const response = await fetch('/api/v1/chats/stream', {
+    const response = await fetch('/poc/api/v1/chats/stream', {
       headers: {
         'x-api-key': state.apiKey,
         'Accept': 'text/event-stream'
@@ -774,6 +820,105 @@ function showToast(message) {
   }, 4000);
 }
 
+// Credit package modal actions
+function openCreditModal() {
+  if (!state.apiKey) return;
+  document.getElementById('credit-modal-balance').innerText = state.credits;
+  document.getElementById('credit-modal').classList.remove('hidden');
+}
+
+function closeCreditModal() {
+  document.getElementById('credit-modal').classList.add('hidden');
+}
+
+async function purchaseCreditPackage(creditsToAdd, price) {
+  if (!state.apiKey) return;
+  try {
+    showToast(`ขอบพระคุณจ้า! 💳 กำลังทำธุรกรรมจำลองยอด ฿${price}...`);
+    
+    // Call the credit purchase API
+    const res = await fetch('/poc/api/v1/users/credits', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': state.apiKey
+      },
+      body: JSON.stringify({ amount: creditsToAdd })
+    });
+    const data = await res.json();
+    
+    if (res.ok) {
+      state.credits = data.credit;
+      
+      // Update balance indicators across the screen
+      document.getElementById('credit-badge').innerText = state.credits;
+      setCreditsDisplay(state.credits);
+      document.getElementById('settings-credit-display').innerText = `${state.credits} Credits`;
+      document.getElementById('credit-modal-balance').innerText = state.credits;
+      
+      showToast(`เติมสำเร็จ +${creditsToAdd} เครดิตแล้วจ้า! 🎉💸`);
+    } else {
+      showToast(data.error || 'Failed to purchase credits.');
+    }
+  } catch (err) {
+    showToast('Network error during simulated purchase.');
+    console.error(err);
+  }
+}
+
+// Toggle dynamic dropdown quick action menu — slide-down/up unfold animation
+function toggleQuickMenu(event) {
+  if (event) event.stopPropagation();
+  const menu = document.getElementById('quick-menu-dropdown');
+  if (!menu) return;
+  const isOpen = menu.getAttribute('aria-hidden') === 'false';
+
+  if (!isOpen) {
+    // ── Unfold downward ──
+    menu.style.opacity = '0';
+    menu.setAttribute('aria-hidden', 'false');
+    menu.style.pointerEvents = 'auto';
+    menu.style.transition = 'max-height 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease, padding 0.3s ease';
+    menu.style.maxHeight = '340px';
+    menu.style.paddingTop = '16px';
+    menu.style.paddingBottom = '20px';
+    // Small delay so opacity fade-in starts just after clip begins
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => { menu.style.opacity = '1'; });
+    });
+  } else {
+    // ── Fold upward — keep opacity:1 so slide-up is visible ──
+    closeQuickMenu(menu, 280);
+  }
+}
+
+// Shared close helper: slides up while keeping content visible
+function closeQuickMenu(menu, duration) {
+  if (!menu || menu.getAttribute('aria-hidden') === 'true') return;
+  menu.setAttribute('aria-hidden', 'true');
+  menu.style.pointerEvents = 'none';
+  // Slide up with content still visible
+  menu.style.transition = `max-height ${duration}ms cubic-bezier(0.4,0,0.2,1), padding ${duration}ms ease`;
+  menu.style.maxHeight = '0';
+  menu.style.paddingTop = '0';
+  menu.style.paddingBottom = '0';
+  // Fade out only after the slide completes
+  setTimeout(() => { menu.style.opacity = '0'; }, duration - 30);
+}
+
+// Close the menu then run action
+function clickQuickMenuItem(action) {
+  const menu = document.getElementById('quick-menu-dropdown');
+  closeQuickMenu(menu, 220);
+  triggerCloudyAction(action);
+}
+
+// Dismiss on outside click
+window.addEventListener('click', () => {
+  const menu = document.getElementById('quick-menu-dropdown');
+  closeQuickMenu(menu, 260);
+});
+
 // Attach key functions to window for global access
 window.switchLoginTab = switchLoginTab;
 window.handleAuthSubmit = handleAuthSubmit;
@@ -788,4 +933,9 @@ window.handleChatSubmit = handleChatSubmit;
 window.quickFillInput = quickFillInput;
 window.submitUserMood = submitUserMood;
 window.handleDeepLinkClick = handleDeepLinkClick;
+window.openCreditModal = openCreditModal;
+window.closeCreditModal = closeCreditModal;
+window.purchaseCreditPackage = purchaseCreditPackage;
+window.toggleQuickMenu = toggleQuickMenu;
+window.clickQuickMenuItem = clickQuickMenuItem;
 

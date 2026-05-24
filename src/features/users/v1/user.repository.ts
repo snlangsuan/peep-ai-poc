@@ -56,4 +56,16 @@ export class UserRepository {
         createdAt: getUtcTime().toISOString(),
       })
   }
+
+  async addCredits(uuid: string, amount: number): Promise<number> {
+    const docRef = db.collection('users').doc(uuid)
+    let newCredit = amount
+    await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(docRef)
+      const current = doc.data()?.credit ?? 100
+      newCredit = current + amount
+      transaction.update(docRef, { credit: newCredit })
+    })
+    return newCredit
+  }
 }
