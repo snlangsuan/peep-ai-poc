@@ -23,6 +23,7 @@ export const envSchema = z.object({
   GOOGLE_GEMINI_EXTRACT_MODEL: z.string().default('gemini-2.5-flash-lite'),
   FIREBASE_DATABASE_URL: z.url().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  OPENAI_BASE_URL: z.string().optional(),
   OPENAI_CHAT_MODEL: z.string().default('gpt-4o-mini'),
   CHAT_PROVIDER: z.enum(['gemini', 'openai']).default('gemini'),
 })

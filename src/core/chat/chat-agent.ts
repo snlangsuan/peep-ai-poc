@@ -56,6 +56,7 @@ export class ChatAgent {
     if (this.provider === 'openai') {
       this.openai = new OpenAI({
         apiKey: process.env.OPENAI_API_KEY || envVariables.OPENAI_API_KEY || 'mock-key',
+        baseURL: process.env.OPENAI_BASE_URL || envVariables.OPENAI_BASE_URL,
       })
     }
     this.userId = options.userId
