@@ -1,6 +1,6 @@
 import { logger } from '#/common/libs/logger.lib'
 
-import type { IChatContext, IChatTask } from '#/core/chat/chat.type'
+import type { IChatContext, IChatTask } from '~/src/core/chat/chat.type'
 
 export class LoggingTask implements IChatTask {
   readonly name = 'chat-logging'

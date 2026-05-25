@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
-import { authMiddleware } from '#/core/middlewares/auth.middleware'
-import { zValidator } from '#/core/middlewares/validator.middleware'
+import { authMiddleware } from '#/infrastructure/http/middlewares/auth.middleware'
+import { zValidator } from '#/infrastructure/http/middlewares/validator.middleware'
 import { ChatController } from '#/features/chats/v1/chat.controller'
 import { listChatDoc, sendChatDoc, streamChatDoc, triggerActionDoc, updateMoodDoc } from '#/features/chats/v1/chat.openapi'
 import { ChatRepository } from '#/features/chats/v1/chat.repository'

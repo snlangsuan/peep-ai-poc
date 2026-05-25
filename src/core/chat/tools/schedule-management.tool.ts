@@ -1,7 +1,7 @@
 import { ScheduleService } from '#/features/schedules/v1/schedule.service'
 import { ScheduleRepository } from '#/features/schedules/v1/schedule.repository'
 
-import type { IChatContext, IChatTool } from '#/core/chat/chat.type'
+import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class ScheduleManagementTool implements IChatTool {
   readonly name = 'manage_schedules'

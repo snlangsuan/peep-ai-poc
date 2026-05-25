@@ -1,4 +1,4 @@
-import type { IChatContext, IChatTask } from '#/core/chat/chat.type'
+import type { IChatContext, IChatTask } from '~/src/core/chat/chat.type'
 
 export class SentimentTask implements IChatTask {
   readonly name = 'chat-sentiment'

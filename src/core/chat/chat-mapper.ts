@@ -1,4 +1,4 @@
-import type { TChatMessageItem } from '#/core/chat/chat.type'
+import type { TChatMessageItem } from '~/src/core/chat/chat.type'
 import type { Part } from '@google/genai'
 
 export type TOpenAIImageContentPart = {

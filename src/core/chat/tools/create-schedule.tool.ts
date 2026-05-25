@@ -1,6 +1,6 @@
 import { db } from '#/common/libs/firebase.lib'
 
-import type { IChatContext, IChatTool } from '#/core/chat/chat.type'
+import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class CreateScheduleTool implements IChatTool {
   readonly name = 'create_schedule'

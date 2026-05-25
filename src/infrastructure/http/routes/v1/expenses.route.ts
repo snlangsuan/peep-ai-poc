@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
-import { authMiddleware } from '#/core/middlewares/auth.middleware'
-import { zValidator } from '#/core/middlewares/validator.middleware'
+import { authMiddleware } from '#/infrastructure/http/middlewares/auth.middleware'
+import { zValidator } from '#/infrastructure/http/middlewares/validator.middleware'
 import { ExpenseController } from '#/features/expenses/v1/expense.controller'
 import { createDoc, deleteDoc, getDoc, listDoc, updateDoc } from '#/features/expenses/v1/expense.openapi'
 import { ExpenseRepository } from '#/features/expenses/v1/expense.repository'
