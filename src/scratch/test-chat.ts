@@ -3,7 +3,6 @@ import { logger } from '#/common/libs/logger.lib'
 import { ChatAgent } from '#/core/chat/chat-agent'
 import { LoggingTask } from '#/core/chat/tasks/logging.task'
 import { SentimentTask } from '#/core/chat/tasks/sentiment.task'
-import { CreateScheduleTool } from '#/core/chat/tools/create-schedule.tool'
 
 import type { TChatAgentThinkingStatus } from '#/core/chat/chat.type'
 
@@ -23,7 +22,6 @@ async function run(): Promise<void> {
 
   agent1.addTask(new LoggingTask())
   agent1.addTask(new SentimentTask())
-  agent1.addTool(new CreateScheduleTool())
 
   const thinkCallback = (status: TChatAgentThinkingStatus): void => {
     switch (status.status) {
@@ -61,7 +59,6 @@ async function run(): Promise<void> {
 
     agent2.addTask(new LoggingTask())
     agent2.addTask(new SentimentTask())
-    agent2.addTool(new CreateScheduleTool())
 
     const result2 = await agent2.query('สวัสดีครับ จำได้ไหมว่าผมชื่ออะไรและชอบทานเมนูไหนเป็นพิเศษครับ', thinkCallback)
     console.log('AI Response 2:', result2.response)

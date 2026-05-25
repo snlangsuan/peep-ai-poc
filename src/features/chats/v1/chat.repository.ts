@@ -20,6 +20,13 @@ export class ChatRepository {
         sender_id: data.sender_id,
         message: data.message,
         created_at: data.created_at?.toDate?.()?.toISOString() || data.created_at,
+        input_tokens: data.input_tokens,
+        output_tokens: data.output_tokens,
+        total_tokens: data.total_tokens,
+        llm_credits: data.llm_credits,
+        tool_credits: data.tool_credits,
+        credits_used: data.credits_used,
+        tools: data.tools,
       }
     })
   }

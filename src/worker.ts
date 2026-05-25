@@ -79,6 +79,7 @@ export function startQueueWorker() {
                 grand_total_tokens: response.metadata.grandTotalTokens,
                 tool_usage_count: response.metadata.toolUsageCount,
                 total_credits_used: response.metadata.totalCreditsUsed,
+                remaining_credits: response.metadata.remainingCredits,
               },
             })
           }

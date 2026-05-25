@@ -26,4 +26,5 @@ export const envSchema = z.object({
   OPENAI_BASE_URL: z.string().optional(),
   OPENAI_CHAT_MODEL: z.string().default('gpt-4o-mini'),
   CHAT_PROVIDER: z.enum(['gemini', 'openai']).default('gemini'),
+  SEARXNG_BASE_URL: z.string().default('http://localhost:8080'),
 })

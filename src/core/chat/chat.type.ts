@@ -38,6 +38,7 @@ export interface IChatAgentMetadata {
   grandTotalTokens: number
   toolUsageCount: number
   totalCreditsUsed: number
+  remainingCredits?: number
 }
 
 export interface IChatAgentResult {

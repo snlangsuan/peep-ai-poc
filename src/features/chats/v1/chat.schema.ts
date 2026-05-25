@@ -64,6 +64,20 @@ export const chatResponseSchema = z.object({
   sender_id: z.string(),
   content: z.array(chatMessageResponseContentSchema),
   created_at: z.string(),
+  input_tokens: z.number().optional(),
+  output_tokens: z.number().optional(),
+  total_tokens: z.number().optional(),
+  llm_credits: z.number().optional(),
+  tool_credits: z.number().optional(),
+  credits_used: z.number().optional(),
+  tools: z
+    .array(
+      z.object({
+        name: z.string(),
+        credits: z.number(),
+      }),
+    )
+    .optional(),
 })
 
 export const chatItemResponseSchema = z.object({
@@ -85,6 +99,7 @@ export const chatSseEventSchema = z.discriminatedUnion('type', [
       grand_total_tokens: z.number(),
       tool_usage_count: z.number(),
       total_credits_used: z.number(),
+      remaining_credits: z.number().optional(),
     }),
   }),
   z.object({ type: z.literal('error'), message: z.string() }),

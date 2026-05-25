@@ -45,6 +45,8 @@ export class ChatAgent {
   private tasks: IChatTask[] = []
   private lastStepTools = new Set<string>()
   private currentStepTools = new Set<string>()
+  private executedTools: Array<{ name: string; credits: number }> = []
+  private remainingCredits: number | null = null
 
   private static readonly HISTORY_WINDOW = 20
   private static readonly SUMMARIZE_THRESHOLD = 40
@@ -222,23 +224,7 @@ Respond ONLY with a JSON object in the following format:
     dynamicInstruction: string,
     thinkCallback?: TThinkCallback,
   ): Promise<IChatAgentResult> {
-    if (thinkCallback) {
-      await thinkCallback({
-        status: 'calling_tool',
-        toolName,
-        args,
-      })
-    }
-
     const { responsePayload, cost } = await this.runToolCall({ name: toolName, args }, context, thinkCallback)
-
-    if (thinkCallback) {
-      await thinkCallback({
-        status: 'tool_response',
-        toolName,
-        result: responsePayload,
-      })
-    }
 
     const { responseText, inputTokens, outputTokens } = await this.generateDirectToolConfirmation(
       toolName,
@@ -248,17 +234,25 @@ Respond ONLY with a JSON object in the following format:
       dynamicInstruction,
     )
 
-    this.history.push({ role: 'user', parts: [{ text: combinedMessage }] })
-    this.history.push({ role: 'model', parts: [{ text: responseText }] })
-
-    if (this.persistHistory) {
-      await this.saveConversationTurn(combinedMessage, responseText)
-    }
-
     const grandTotalTokens = inputTokens + outputTokens
     const llmCredits = grandTotalTokens / this.tokensPerCredit
     const rawCredits = llmCredits + cost
     const totalCreditsUsed = Math.ceil(rawCredits)
+
+    this.history.push({ role: 'user', parts: [{ text: combinedMessage }] })
+    this.history.push({ role: 'model', parts: [{ text: responseText }] })
+
+    if (this.persistHistory) {
+      await this.saveConversationTurn(combinedMessage, responseText, {
+        inputTokens,
+        outputTokens,
+        totalTokens: grandTotalTokens,
+        llmCredits,
+        toolCredits: cost,
+        creditsUsed: totalCreditsUsed,
+        tools: this.executedTools,
+      })
+    }
 
     const metadata: IChatAgentMetadata = {
       totalInputTokens: inputTokens,
@@ -266,6 +260,7 @@ Respond ONLY with a JSON object in the following format:
       grandTotalTokens,
       toolUsageCount: 1,
       totalCreditsUsed,
+      remainingCredits: this.remainingCredits ?? 0,
     }
 
     if (thinkCallback) {
@@ -364,17 +359,25 @@ Respond ONLY with a JSON object in the following format:
 
       const finalResponseText = finalResponse.choices[0]?.message?.content || ''
 
-      this.history.push({ role: 'user', parts: [{ text: combinedMessage }] })
-      this.history.push({ role: 'model', parts: [{ text: finalResponseText }] })
-
-      if (this.persistHistory) {
-        await this.saveConversationTurn(combinedMessage, finalResponseText)
-      }
-
       const grandTotalTokens = totalInputTokens + totalOutputTokens
       const llmCredits = grandTotalTokens / this.tokensPerCredit
       const rawCredits = llmCredits + toolCredits
       const totalCreditsUsed = Math.ceil(rawCredits)
+
+      this.history.push({ role: 'user', parts: [{ text: combinedMessage }] })
+      this.history.push({ role: 'model', parts: [{ text: finalResponseText }] })
+
+      if (this.persistHistory) {
+        await this.saveConversationTurn(combinedMessage, finalResponseText, {
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          totalTokens: grandTotalTokens,
+          llmCredits,
+          toolCredits,
+          creditsUsed: totalCreditsUsed,
+          tools: this.executedTools,
+        })
+      }
 
       const metadata: IChatAgentMetadata = {
         totalInputTokens,
@@ -382,6 +385,7 @@ Respond ONLY with a JSON object in the following format:
         grandTotalTokens,
         toolUsageCount,
         totalCreditsUsed,
+        remainingCredits: this.remainingCredits ?? 0,
       }
 
       if (thinkCallback) {
@@ -495,17 +499,25 @@ Respond ONLY with a JSON object in the following format:
 
       const finalResponseText = finalResponse.candidates?.[0]?.content?.parts?.find((p: Part) => p.text)?.text || ''
 
-      this.history.push({ role: 'user', parts: [{ text: context.message }] })
-      this.history.push({ role: 'model', parts: [{ text: finalResponseText }] })
-
-      if (this.persistHistory) {
-        await this.saveConversationTurn(context.message, finalResponseText)
-      }
-
       const grandTotalTokens = totalInputTokens + totalOutputTokens
       const llmCredits = grandTotalTokens / this.tokensPerCredit
       const rawCredits = llmCredits + toolCredits
       const totalCreditsUsed = Math.ceil(rawCredits)
+
+      this.history.push({ role: 'user', parts: [{ text: context.message }] })
+      this.history.push({ role: 'model', parts: [{ text: finalResponseText }] })
+
+      if (this.persistHistory) {
+        await this.saveConversationTurn(context.message, finalResponseText, {
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          totalTokens: grandTotalTokens,
+          llmCredits,
+          toolCredits,
+          creditsUsed: totalCreditsUsed,
+          tools: this.executedTools,
+        })
+      }
 
       const metadata: IChatAgentMetadata = {
         totalInputTokens,
@@ -513,6 +525,7 @@ Respond ONLY with a JSON object in the following format:
         grandTotalTokens,
         toolUsageCount,
         totalCreditsUsed,
+        remainingCredits: this.remainingCredits ?? 0,
       }
 
       if (thinkCallback) {
@@ -667,6 +680,7 @@ Respond ONLY with a JSON object in the following format:
   private clearToolExecutionTracking(): void {
     this.lastStepTools.clear()
     this.currentStepTools.clear()
+    this.executedTools = []
   }
 
   private serializeToolArgs(args: Record<string, unknown>): string {
@@ -726,6 +740,7 @@ Respond ONLY with a JSON object in the following format:
     if (executedTool && executedTool.creditCost) {
       cost = executedTool.creditCost
     }
+    this.executedTools.push({ name: call.name, credits: cost })
     return { responsePayload, cost }
   }
 
@@ -915,7 +930,19 @@ Respond ONLY with a JSON object in the following format:
     }
   }
 
-  private async saveConversationTurn(message: string, responseText: string): Promise<void> {
+  private async saveConversationTurn(
+    message: string,
+    responseText: string,
+    usage?: {
+      inputTokens: number
+      outputTokens: number
+      totalTokens: number
+      llmCredits: number
+      toolCredits: number
+      creditsUsed: number
+      tools: Array<{ name: string; credits: number }>
+    },
+  ): Promise<void> {
     try {
       await db.collection('chats').add({
         user_id: this.userId,
@@ -928,9 +955,39 @@ Respond ONLY with a JSON object in the following format:
         sender_id: 'bot',
         message: responseText,
         created_at: getUtcTime().toDate(),
+        ...(usage
+          ? {
+              input_tokens: usage.inputTokens,
+              output_tokens: usage.outputTokens,
+              total_tokens: usage.totalTokens,
+              llm_credits: usage.llmCredits,
+              tool_credits: usage.toolCredits,
+              credits_used: usage.creditsUsed,
+              tools: usage.tools,
+            }
+          : {}),
       })
+
+      let remaining = 0
+      if (usage && usage.creditsUsed > 0) {
+        const userDocRef = db.collection('users').doc(this.userId)
+        await db.runTransaction(async (transaction) => {
+          const userDoc = await transaction.get(userDocRef)
+          if (userDoc.exists) {
+            const currentCredit = userDoc.data()?.credit ?? 0
+            remaining = Math.max(0, currentCredit - usage.creditsUsed)
+            transaction.update(userDocRef, { credit: remaining })
+          }
+        })
+      } else {
+        const userDoc = await db.collection('users').doc(this.userId).get()
+        if (userDoc.exists) {
+          remaining = userDoc.data()?.credit ?? 0
+        }
+      }
+      this.remainingCredits = remaining
     } catch (error) {
-      logger.error(error, 'Failed to save conversation turn to Firestore')
+      logger.error(error, 'Failed to save conversation turn and deduct credits to Firestore')
     }
   }
 

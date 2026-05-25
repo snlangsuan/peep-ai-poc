@@ -25,4 +25,11 @@ export type TChatRawResponse = {
   sender_id?: string
   message?: string
   created_at?: Date | string
+  input_tokens?: number
+  output_tokens?: number
+  total_tokens?: number
+  llm_credits?: number
+  tool_credits?: number
+  credits_used?: number
+  tools?: Array<{ name: string; credits: number }>
 }

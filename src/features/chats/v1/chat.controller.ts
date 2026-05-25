@@ -94,6 +94,13 @@ export class ChatController {
           typeof item.created_at === 'string'
             ? item.created_at
             : item.created_at?.toISOString() || new Date().toISOString(),
+        input_tokens: item.input_tokens,
+        output_tokens: item.output_tokens,
+        total_tokens: item.total_tokens,
+        llm_credits: item.llm_credits,
+        tool_credits: item.tool_credits,
+        credits_used: item.credits_used,
+        tools: item.tools,
       }
     })
 

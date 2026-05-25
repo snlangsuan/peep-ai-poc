@@ -6,12 +6,16 @@ const state = {
   chats: [],
   isThinking: false,
   authMode: 'login', // login | register
-  activeStreamReader: null
+  activeStreamReader: null,
+  chatLimit: 20,
+  hasMoreChats: true,
+  isLoadingChats: false
 };
 
 // Initialize application on load
 window.addEventListener('DOMContentLoaded', () => {
   checkAuthState();
+  setupChatScrollListener();
 });
 
 // Check login state and bootstrap dashboard
@@ -266,8 +270,27 @@ function openChatScreen() {
   chatPanel.classList.remove('translate-x-full');
   chatPanel.classList.add('translate-x-0');
   
-  // Load previous chats
-  loadChatHistory();
+  // Reset pagination state
+  state.chatLimit = 20;
+  state.hasMoreChats = true;
+  state.isLoadingChats = false;
+
+  // Clear previous message bubbles and show loading spinner
+  const container = document.getElementById('chat-messages-container');
+  if (container) {
+    const items = Array.from(container.children).filter(
+      el => el.id !== 'chat-empty-state' && el.id !== 'chat-loading-state'
+    );
+    items.forEach(el => el.remove());
+  }
+
+  const loadingState = document.getElementById('chat-loading-state');
+  const emptyState = document.getElementById('chat-empty-state');
+  if (loadingState) loadingState.classList.remove('hidden');
+  if (emptyState) emptyState.classList.add('hidden');
+  
+  // Load previous chats (isInitial = true)
+  loadChatHistory(true);
 }
 
 function closeChatScreen() {
@@ -285,48 +308,113 @@ function quickFillInput(prompt) {
   input.focus();
 }
 
+// Render sorted chat bubbles inside viewport container
+function renderChatsList(items, isInitial, previousScrollHeight) {
+  const container = document.getElementById('chat-messages-container');
+  const emptyState = document.getElementById('chat-empty-state');
+  if (emptyState) emptyState.classList.add('hidden');
+
+  // Clear current dynamic content (keep empty-state, loading spinner, and scroll loader)
+  const elementsToClear = Array.from(container.children).filter(
+    el => el.id !== 'chat-empty-state' && el.id !== 'chat-loading-state' && el.id !== 'chat-scroll-loader'
+  );
+  elementsToClear.forEach(el => el.remove());
+
+  // Sort by creation date (older first for chat rendering)
+  const sorted = [...items].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  sorted.forEach(msg => appendMessageBubble(msg));
+  
+  // Update snippets on dashboard
+  updateDashboardSnippet(sorted);
+
+  if (isInitial) {
+    scrollChatToBottom();
+  } else {
+    // Anchor scroll position
+    container.scrollTop = container.scrollHeight - previousScrollHeight;
+  }
+}
+
+// Update snippet message in dashboard preview
+function updateDashboardSnippet(sortedMessages) {
+  const lastMsg = sortedMessages[sortedMessages.length - 1];
+  if (lastMsg && lastMsg.content && lastMsg.content[0]) {
+    let snippet = lastMsg.content[0].text || 'รหัสข้อความแบบโต้ตอบ ☁️';
+    // Replace all newlines/carriage returns with space to force single-line display
+    snippet = snippet.replace(/\r?\n/g, ' ');
+    const snippetEl = document.getElementById('dashboard-cloudy-snippet');
+    if (snippetEl) snippetEl.innerText = snippet;
+  }
+}
+
 // Fetch and render message history
-async function loadChatHistory() {
+async function loadChatHistory(isInitial = false) {
   if (!state.apiKey) return;
   const container = document.getElementById('chat-messages-container');
   const emptyState = document.getElementById('chat-empty-state');
+  const loadingState = document.getElementById('chat-loading-state');
+  const scrollLoader = document.getElementById('chat-scroll-loader');
+
+  state.isLoadingChats = true;
+  
+  if (!isInitial && scrollLoader) {
+    scrollLoader.classList.remove('hidden');
+  }
   
   try {
-    const res = await fetch('/poc/api/v1/chats?limit=50', {
+    const res = await fetch(`/poc/api/v1/chats?limit=${state.chatLimit}`, {
       headers: { 'x-api-key': state.apiKey }
     });
     const data = await res.json();
+
+    if (loadingState) loadingState.classList.add('hidden');
+    if (scrollLoader) scrollLoader.classList.add('hidden');
     
     if (res.ok && data.items && data.items.length > 0) {
-      emptyState.classList.add('hidden');
-      
-      // Clear current dynamic content (but keep empty-state div locked)
-      const items = Array.from(container.children).filter(el => el.id !== 'chat-empty-state');
-      items.forEach(el => el.remove());
+      const currentBubbleCount = Array.from(container.children).filter(el => el.id && el.id.startsWith('bubble-')).length;
 
-      // Sort by creation date (older first for chat rendering)
-      const sorted = [...data.items].sort((a, b) => {
-        return new Date(a.created_at) - new Date(b.created_at);
-      });
-      sorted.forEach(msg => {
-        appendMessageBubble(msg);
-      });
-      
-      // Update snippets on dashboard
-      const lastMsg = sorted[sorted.length - 1];
-      if (lastMsg && lastMsg.content && lastMsg.content[0]) {
-        const snippet = lastMsg.content[0].text || 'รหัสข้อความแบบโต้ตอบ ☁️';
-        document.getElementById('dashboard-cloudy-snippet').innerText = snippet;
+      if (data.items.length === currentBubbleCount && !isInitial) {
+        state.hasMoreChats = false;
+        showToast('โหลดประวัติบทสนทนาทั้งหมดเรียบร้อยแล้วจ้า ☁️🔒');
+        state.isLoadingChats = false;
+        return;
       }
 
-      scrollChatToBottom();
+      if (data.items.length < state.chatLimit) {
+        state.hasMoreChats = false;
+      }
+
+      const previousScrollHeight = container.scrollHeight;
+      renderChatsList(data.items, isInitial, previousScrollHeight);
     } else {
-      emptyState.classList.remove('hidden');
+      if (emptyState) emptyState.classList.remove('hidden');
+      state.hasMoreChats = false;
     }
   } catch (err) {
     showToast('Error syncing chat histories.');
     console.error(err);
+  } finally {
+    state.isLoadingChats = false;
+    if (loadingState) loadingState.classList.add('hidden');
+    if (scrollLoader) scrollLoader.classList.add('hidden');
   }
+}
+
+// Setup Scroll Listener for Infinite History Pagination
+function setupChatScrollListener() {
+  const container = document.getElementById('chat-messages-container');
+  if (!container) return;
+
+  container.addEventListener('scroll', async () => {
+    if (container.scrollTop === 0) {
+      if (!state.hasMoreChats || state.isLoadingChats || state.isThinking) {
+        return;
+      }
+      
+      state.chatLimit += 20;
+      await loadChatHistory(false);
+    }
+  });
 }
 
 // Custom renderer mapping text formatting, markdown details, and emojis
@@ -686,8 +774,12 @@ async function streamAgentResponse() {
     toggleThinkingIndicator(false);
     state.isThinking = false;
     
-    // Sync user profile tokens/credits
-    await fetchUserInfo();
+    if (!state.syncedCreditsViaSSE) {
+      // Sync user profile tokens/credits only if not already synced via SSE done metadata
+      await fetchUserInfo();
+    }
+    // Reset the optimization flag
+    state.syncedCreditsViaSSE = false;
   }
 }
 
@@ -723,7 +815,14 @@ function handleAgentStreamEvent(event, data) {
   else if (event === 'done') {
     // AI execution complete, terminate streaming reader and reload chat histories
     abortActiveSSE();
-    loadChatHistory();
+    
+    if (data.metadata && typeof data.metadata.remaining_credits === 'number') {
+      state.credits = data.metadata.remaining_credits;
+      setCreditsDisplay(state.credits);
+      state.syncedCreditsViaSSE = true;
+    }
+    
+    loadChatHistory(true);
   }
   else if (event === 'error') {
     abortActiveSSE();
