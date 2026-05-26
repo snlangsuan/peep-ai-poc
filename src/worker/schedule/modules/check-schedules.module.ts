@@ -2,6 +2,7 @@ import admin from 'firebase-admin'
 
 import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
+import { sseBroker } from '#/common/services/sse-broker.service'
 import { getLocalTime } from '#/common/utils/datetime.util'
 
 import type { IScheduleModule } from '#/worker/schedule/schedule.type'
@@ -138,6 +139,38 @@ export class CheckSchedulesModule implements IScheduleModule {
       before_sent_at: admin.firestore.FieldValue.serverTimestamp(),
     })
     logger.info({ scheduleId: doc.id }, '✅ Updated before_sent_at timestamp in Firestore')
+
+    // Add chatbot message to the chats collection so it appears in history
+    const data = doc.data()
+    const userId = data.user_id || data.userId
+    const title = payload?.title || payload?.message || 'ไม่มีหัวข้อ'
+    const desc = payload?.description ? ` (${payload.description})` : ''
+    const loc = payload?.location ? ` ที่ ${payload.location}` : ''
+    const notificationMessage = `⏰ [แจ้งเตือนล่วงหน้า 15 นาที] อีก 15 นาที มีนัดหมาย: "${title}"${loc}${desc}`
+
+    if (userId) {
+      await db.collection('chats').add({
+        user_id: userId,
+        sender_id: 'bot',
+        message: notificationMessage,
+        created_at: new Date(),
+      })
+      logger.info({ scheduleId: doc.id, userId }, '💬 Saved pre-notification message to chats collection')
+
+      // Emit SSE event to trigger real-time chat reload/append in client UI
+      sseBroker.emit(userId, {
+        type: 'done',
+        response: notificationMessage,
+        metadata: {
+          total_input_tokens: 0,
+          total_output_tokens: 0,
+          grand_total_tokens: 0,
+          tool_usage_count: 0,
+          total_credits_used: 0,
+          remaining_credits: 0,
+        },
+      })
+    }
   }
 
   private async handleDueNotification(
@@ -156,6 +189,38 @@ export class CheckSchedulesModule implements IScheduleModule {
       sent_at: admin.firestore.FieldValue.serverTimestamp(),
     })
     logger.info({ scheduleId: doc.id }, '✅ Updated sent_at timestamp in Firestore')
+
+    // Add chatbot message to the chats collection so it appears in history
+    const data = doc.data()
+    const userId = data.user_id || data.userId
+    const title = payload?.title || payload?.message || 'ไม่มีหัวข้อ'
+    const desc = payload?.description ? ` (${payload.description})` : ''
+    const loc = payload?.location ? ` ที่ ${payload.location}` : ''
+    const notificationMessage = `🔔 [แจ้งเตือน] ถึงเวลาแล้วจ้า: "${title}"${loc}${desc}`
+
+    if (userId) {
+      await db.collection('chats').add({
+        user_id: userId,
+        sender_id: 'bot',
+        message: notificationMessage,
+        created_at: new Date(),
+      })
+      logger.info({ scheduleId: doc.id, userId }, '💬 Saved due-notification message to chats collection')
+
+      // Emit SSE event to trigger real-time chat reload/append in client UI
+      sseBroker.emit(userId, {
+        type: 'done',
+        response: notificationMessage,
+        metadata: {
+          total_input_tokens: 0,
+          total_output_tokens: 0,
+          grand_total_tokens: 0,
+          tool_usage_count: 0,
+          total_credits_used: 0,
+          remaining_credits: 0,
+        },
+      })
+    }
   }
 
   private parseDate(val: any): Dayjs | null {

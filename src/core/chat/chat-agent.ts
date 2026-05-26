@@ -6,7 +6,7 @@ import { AIService } from '#/common/services/ai.service'
 import { getLocalTime, getUtcTime } from '#/common/utils/datetime.util'
 import { parseQueryInput, mapInputToOpenAIContent, mapParametersToOpenAI } from '#/core/chat/chat-mapper'
 import { envVariables } from '#/factory'
-import { DEFAULT_SYSTEM_INSTRUCTION } from '#/common/constants/chat.constant'
+import { AGENT_SYSTEM_INSTRUCTION, DEFAULT_PERSONA } from '#/common/constants/chat.constant'
 
 import type {
   IChatContext,
@@ -37,6 +37,9 @@ export class ChatAgent {
   private persistHistory: boolean
   private persistMemory: boolean
   private disableClassifier: boolean
+  /** Persona: บุคลิก น้ำเสียง สไตล์การตอบ — เปลี่ยนได้ตาม persona ที่เลือก */
+  private persona: string
+  /** System Instruction: กฎการทำงานและข้อจำกัดหลัก — คงที่เสมอไม่ว่าจะเลือก persona ใด */
   private systemInstruction: string
 
   // Conversational & Tool State
@@ -63,7 +66,8 @@ export class ChatAgent {
     }
     this.userId = options.userId
     this.history = options.history ?? []
-    this.systemInstruction = options.systemInstruction ?? DEFAULT_SYSTEM_INSTRUCTION
+    this.persona = options.persona ?? DEFAULT_PERSONA
+    this.systemInstruction = options.systemInstruction ?? AGENT_SYSTEM_INSTRUCTION
     this.persistHistory = options.persistHistory !== false
     this.persistMemory = options.persistMemory !== false
     this.tokensPerCredit = options.tokensPerCredit ?? 1000
@@ -80,6 +84,11 @@ export class ChatAgent {
 
   setInstruction(instruction: string): this {
     this.systemInstruction = instruction
+    return this
+  }
+
+  setPersona(persona: string): this {
+    this.persona = persona
     return this
   }
 
@@ -1079,7 +1088,8 @@ Respond ONLY with a JSON object in the following format:
     if (this.persistMemory) {
       memoriesText = await this.loadMemoriesFromFirestore()
     }
-    return `${this.systemInstruction}${memoriesText} Current Thai local time is ${nowStr}.`
+    // Compose: Persona → System Instruction → Memories → Current Time
+    return `${this.persona}\n\n${this.systemInstruction}${memoriesText} Current Thai local time is ${nowStr}.`
   }
 
   private hasFunctionCalls(response: GenerateContentResponse): boolean {

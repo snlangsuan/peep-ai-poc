@@ -49,6 +49,15 @@ export interface IChatAgentResult {
 export interface IChatAgentOptions {
   userId: string
   history?: Content[]
+  /**
+   * Persona: บุคลิก น้ำเสียง และสไตล์การตอบของ Agent
+   * ถ้าไม่ระบุ จะใช้ DEFAULT_PERSONA
+   */
+  persona?: string
+  /**
+   * System Instruction: กฎการทำงานและข้อจำกัดหลักของ Agent
+   * ถ้าไม่ระบุ จะใช้ AGENT_SYSTEM_INSTRUCTION
+   */
   systemInstruction?: string
   persistHistory?: boolean
   persistMemory?: boolean

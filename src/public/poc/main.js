@@ -309,9 +309,12 @@ function quickFillInput(prompt) {
 }
 
 // Render sorted chat bubbles inside viewport container
-function renderChatsList(items, isInitial, previousScrollHeight) {
+async function renderChatsList(items, isInitial, previousScrollHeight) {
   const container = document.getElementById('chat-messages-container');
   const emptyState = document.getElementById('chat-empty-state');
+  const loadingState = document.getElementById('chat-loading-state');
+  const scrollLoader = document.getElementById('chat-scroll-loader');
+
   if (emptyState) emptyState.classList.add('hidden');
 
   // Clear current dynamic content (keep empty-state, loading spinner, and scroll loader)
@@ -327,8 +330,12 @@ function renderChatsList(items, isInitial, previousScrollHeight) {
   // Update snippets on dashboard
   updateDashboardSnippet(sorted);
 
+  // Hide loading indicator before scroll calculations to prevent layout shifting
+  if (loadingState) loadingState.classList.add('hidden');
+  if (scrollLoader) scrollLoader.classList.add('hidden');
+
   if (isInitial) {
-    scrollChatToBottom();
+    await scrollChatToBottom(false);
   } else {
     // Anchor scroll position
     container.scrollTop = container.scrollHeight - previousScrollHeight;
@@ -366,9 +373,6 @@ async function loadChatHistory(isInitial = false) {
       headers: { 'x-api-key': state.apiKey }
     });
     const data = await res.json();
-
-    if (loadingState) loadingState.classList.add('hidden');
-    if (scrollLoader) scrollLoader.classList.add('hidden');
     
     if (res.ok && data.items && data.items.length > 0) {
       const currentBubbleCount = Array.from(container.children).filter(el => el.id && el.id.startsWith('bubble-')).length;
@@ -377,6 +381,8 @@ async function loadChatHistory(isInitial = false) {
         state.hasMoreChats = false;
         showToast('โหลดประวัติบทสนทนาทั้งหมดเรียบร้อยแล้วจ้า ☁️🔒');
         state.isLoadingChats = false;
+        if (loadingState) loadingState.classList.add('hidden');
+        if (scrollLoader) scrollLoader.classList.add('hidden');
         return;
       }
 
@@ -385,7 +391,7 @@ async function loadChatHistory(isInitial = false) {
       }
 
       const previousScrollHeight = container.scrollHeight;
-      renderChatsList(data.items, isInitial, previousScrollHeight);
+      await renderChatsList(data.items, isInitial, previousScrollHeight);
     } else {
       if (emptyState) emptyState.classList.remove('hidden');
       state.hasMoreChats = false;
@@ -486,7 +492,7 @@ function renderMoodCardMessage(part, bubbleId) {
       <span class="text-base">☁️</span>
       <span class="text-[13.5px] font-bold text-white/90">Daily Mood Check</span>
     </div>
-    <p class="text-[12.5px] text-white/60">คลาวดี้อยากทราบว่าคุณปี๊บรู้สึกอย่างไรบ้างในวันนี้จ้า?</p>
+    <p class="text-[12.5px] text-white/60">วันนี้คุณรู้สึกอย่างไรบ้าง? มาแบ่งปันกับคลาวดี้หน่อยนะ ☁️✨</p>
     <div class="grid grid-cols-2 gap-2 mt-1.5" id="mood-options-${bubbleId}">
       ${optionsHtml}
     </div>
@@ -855,14 +861,29 @@ function toggleThinkingIndicator(show) {
 }
 
 // Scroll chat viewport to base
-function scrollChatToBottom() {
-  const container = document.getElementById('chat-messages-container');
-  setTimeout(() => {
-    container.scrollTo({
-      top: container.scrollHeight,
-      behavior: 'smooth'
-    });
-  }, 100);
+function scrollChatToBottom(isSmooth = true) {
+  return new Promise((resolve) => {
+    const container = document.getElementById('chat-messages-container');
+    if (!container) {
+      resolve();
+      return;
+    }
+    if (isSmooth) {
+      setTimeout(() => {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: 'smooth'
+        });
+        resolve();
+      }, 100);
+    } else {
+      // Synchronous layout calculation with requestAnimationFrame to prevent visual flashes
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+        resolve();
+      });
+    }
+  });
 }
 
 // Handle deep-link redirects inside cards

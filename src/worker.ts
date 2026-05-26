@@ -2,7 +2,6 @@ import { logger } from '#/common/libs/logger.lib'
 import { memoryQueueService } from '#/common/services/queue.service'
 import { sseBroker } from '#/common/services/sse-broker.service'
 import { ChatAgent } from '#/core/chat/chat-agent'
-import { DEFAULT_SYSTEM_INSTRUCTION } from '#/common/constants/chat.constant'
 import { WebSearchTool } from '#/core/chat/tools/web-search.tool'
 import { ScheduleManagementTool } from '#/core/chat/tools/schedule-management.tool'
 import { TodoManagementTool } from '#/core/chat/tools/todo-management.tool'
@@ -43,7 +42,8 @@ export function startQueueWorker() {
         userId,
         persistHistory: true,
         persistMemory: true,
-        systemInstruction: DEFAULT_SYSTEM_INSTRUCTION,
+        // persona: DEFAULT_PERSONA,           // ← เลือก persona ที่นี่ในอนาคต
+        // systemInstruction: AGENT_SYSTEM_INSTRUCTION, // ← override กฎการทำงานที่นี่
       })
         .addTool(new WebSearchTool())
         .addTool(new ScheduleManagementTool())
@@ -84,18 +84,6 @@ export function startQueueWorker() {
             })
           }
         })
-
-        // sseBroker.emit(userId, {
-        //   type: 'done',
-        //   response: result.response,
-        //   metadata: {
-        //     total_input_tokens: result.metadata.totalInputTokens,
-        //     total_output_tokens: result.metadata.totalOutputTokens,
-        //     grand_total_tokens: result.metadata.grandTotalTokens,
-        //     tool_usage_count: result.metadata.toolUsageCount,
-        //     total_credits_used: result.metadata.totalCreditsUsed,
-        //   },
-        // })
       } catch (err) {
         sseBroker.emit(userId, {
           type: 'error',

@@ -26,10 +26,20 @@ export class ScheduleWorker {
     }
 
     for (const module of this.modules) {
-      const timezone = module.timezone || 'Asia/Bangkok'
-      logger.info({ module: module.name, cronPattern: module.cronPattern, timezone }, '⏰ Scheduling task module')
+      const cronOptions: { timezone?: string } = {}
+      if (module.timezone) {
+        cronOptions.timezone = module.timezone
+      }
+      logger.info(
+        {
+          module: module.name,
+          cronPattern: module.cronPattern,
+          timezone: module.timezone || 'Local (System)',
+        },
+        '⏰ Scheduling task module',
+      )
 
-      const job = new Cron(module.cronPattern, { timezone }, async () => {
+      const job = new Cron(module.cronPattern, cronOptions, async () => {
         try {
           logger.info(`🔄 [SCHEDULE] Executing module: ${module.name}`)
           await module.execute()

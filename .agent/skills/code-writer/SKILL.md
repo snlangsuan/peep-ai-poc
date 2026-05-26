@@ -105,10 +105,21 @@ However, all the internal files of that feature must be named using the strictly
 - **Mapping**: Services are responsible for mapping Prisma results (e.g., `_count.children`) to the public API format (e.g., `children_count`).
 
 ### 4. Controller Implementation
-- Use the generic signature for Hono handlers:
-      ```typescript
-      method = async <E, P, I>(c: Context<E, P, I>) => { ... }
-      ```
+- Use the explicit generic signature for Hono handlers to ensure proper type safety and request validation inference:
+  ```typescript
+  import type { Bindings, ParamInputSchema, Variables } from '#/common/types/app.type'
+  // Or JsonInputSchema, QueryInputSchema, etc. depending on your needs.
+
+  methodName = async <
+    E extends { Bindings: Bindings; Variables: Variables },
+    P extends string,
+    I extends ParamInputSchema<T...Param>, // e.g. ParamInputSchema, JsonInputSchema
+  >(
+    c: Context<E, P, I>,
+  ) => {
+    ...
+  }
+  ```
 - **Strict Input Typing for Multi-Validation Routes**: When a route applies one or more validators (e.g., `param`, `query`, or `json` validation) via `zValidator` in the router, the controller's type parameter `I` must strictly reflect this by extending the appropriate schemas from `#/common/types/app.type`:
   - **Single JSON payload validation**: `I extends JsonInputSchema<TPayload>`
   - **Single Param validation**: `I extends ParamInputSchema<TParam>`
@@ -134,7 +145,39 @@ When registering Hono routers under `src/infrastructure/http/routes/[version]/` 
   - The `[name].route.ts` file under `src/infrastructure/http/routes/[version]/` is where the Hono routing is actively defined. It instantiates repository, service, and controller dependencies, sets up the Hono group router, applies the imported `describeRoute` middleware handlers directly to the routes, executes input validator middleware, and delegates requests to the controller handlers.
   - **Input and Parameter Validation**: For validating request components like `form`, `json`, `query`, `param`, `header`, and `cookie`, you **must** use the custom `zValidator` middleware imported from `#/core/middlewares/validator.middleware` within the Hono route files, rather than raw/direct validators from other packages.
 
-
+### 6. OpenAPI Documentation Standards (*.openapi.ts)
+When writing OpenAPI documentation files:
+- **Import standard tools**:
+  ```typescript
+  import { describeRoute, resolver } from 'hono-openapi'
+  import { HTTP_ERROR_DESCRIPTIONS, HTTP_ERROR_EXAMPLE } from '#/common/constants/openapi.contant'
+  import { httpErrorResponseSchema, successResponseSchema } from '#/common/schemas/response.schema'
+  import { ERouteTag } from '#/common/types/openapi.type'
+  ```
+- **Tagging**: Group endpoints using tags from the `ERouteTag` enum (e.g., `tags: [ERouteTag.CHAT]`).
+- **Response Validation**: Wrap the response schema inside `resolver(schema)`.
+- **Error Responses & Examples**: Always document standard error responses using `resolver` with `httpErrorResponseSchema` and dynamic metadata/example for the specific status code:
+  ```typescript
+  400: {
+    description: HTTP_ERROR_DESCRIPTIONS[400] as string,
+    content: {
+      'application/json': {
+        schema: resolver(httpErrorResponseSchema.meta({ example: HTTP_ERROR_EXAMPLE['400'] })),
+      },
+    },
+  }
+  ```
+  And for `404`:
+  ```typescript
+  404: {
+    description: HTTP_ERROR_DESCRIPTIONS[404] as string,
+    content: {
+      'application/json': {
+        schema: resolver(httpErrorResponseSchema.meta({ example: HTTP_ERROR_EXAMPLE['404'] })),
+      },
+    },
+  }
+  ```
 
 ---
 *Note: If you encounter "Property does not exist" or "Possibly undefined" errors during scaffolding, check the Zod schemas in `*.schema.ts` first. They are the source of truth for types.*
