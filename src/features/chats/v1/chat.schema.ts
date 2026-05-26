@@ -64,6 +64,7 @@ export const chatResponseSchema = z.object({
   sender_id: z.string(),
   content: z.array(chatMessageResponseContentSchema),
   created_at: z.string(),
+  feedback: z.enum(['like', 'dislike']).nullable().optional(),
   input_tokens: z.number().optional(),
   output_tokens: z.number().optional(),
   total_tokens: z.number().optional(),
@@ -112,6 +113,11 @@ export const chatActionPayloadSchema = z.object({
 export const chatMoodUpdatePayloadSchema = z.object({
   messageId: z.string(),
   mood: z.string(),
+})
+
+export const chatFeedbackPayloadSchema = z.object({
+  messageId: z.string(),
+  feedback: z.enum(['like', 'dislike']).nullable(),
 })
 
 

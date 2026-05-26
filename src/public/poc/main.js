@@ -5,12 +5,22 @@ const state = {
   credits: null,
   chats: [],
   isThinking: false,
+  isReloadingHistory: false,
   authMode: 'login', // login | register
   activeStreamReader: null,
   chatLimit: 20,
   hasMoreChats: true,
   isLoadingChats: false
 };
+
+// SVG Assets for reactions instead of emojis
+function getHeartSvg(sizeClass = 'w-4 h-4') {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="${sizeClass} text-white"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" fill="currentColor" fill-opacity="0.15"/></svg>`;
+}
+
+function getAngrySvg(sizeClass = 'w-4 h-4') {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="${sizeClass} text-white"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm10-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3" fill="currentColor" fill-opacity="0.15"/></svg>`;
+}
 
 // Initialize application on load
 window.addEventListener('DOMContentLoaded', () => {
@@ -289,6 +299,9 @@ function openChatScreen() {
   if (loadingState) loadingState.classList.remove('hidden');
   if (emptyState) emptyState.classList.add('hidden');
   
+  const chips = document.getElementById('chat-prompt-chips');
+  if (chips) chips.classList.add('hidden');
+  
   // Load previous chats (isInitial = true)
   loadChatHistory(true);
 }
@@ -310,12 +323,16 @@ function quickFillInput(prompt) {
 
 // Render sorted chat bubbles inside viewport container
 async function renderChatsList(items, isInitial, previousScrollHeight) {
+  state.chats = items;
   const container = document.getElementById('chat-messages-container');
   const emptyState = document.getElementById('chat-empty-state');
   const loadingState = document.getElementById('chat-loading-state');
   const scrollLoader = document.getElementById('chat-scroll-loader');
 
   if (emptyState) emptyState.classList.add('hidden');
+  
+  const chips = document.getElementById('chat-prompt-chips');
+  if (chips) chips.classList.add('hidden');
 
   // Clear current dynamic content (keep empty-state, loading spinner, and scroll loader)
   const elementsToClear = Array.from(container.children).filter(
@@ -354,6 +371,42 @@ function updateDashboardSnippet(sortedMessages) {
   }
 }
 
+// Helper to hide chat loader indicators
+function hideChatLoaders(loadingState, scrollLoader) {
+  state.isLoadingChats = false;
+  if (loadingState) loadingState.classList.add('hidden');
+  if (scrollLoader) scrollLoader.classList.add('hidden');
+}
+
+// Helper to handle the empty or non-successful history state
+function handleEmptyChatHistory(emptyState) {
+  if (emptyState) emptyState.classList.remove('hidden');
+  const chips = document.getElementById('chat-prompt-chips');
+  if (chips) chips.classList.remove('hidden');
+  state.hasMoreChats = false;
+}
+
+// Helper to handle successful history sync
+async function handleChatHistorySync(items, isInitial, container, loadingState, scrollLoader) {
+  const currentBubbleCount = Array.from(container.children)
+    .filter(el => el.id && el.id.startsWith('bubble-')).length;
+
+  // If no new bubbles were loaded, we are at the end of history
+  if (items.length === currentBubbleCount && !isInitial) {
+    state.hasMoreChats = false;
+    showToast('โหลดประวัติบทสนทนาทั้งหมดเรียบร้อยแล้วจ้า ☁️🔒');
+    hideChatLoaders(loadingState, scrollLoader);
+    return;
+  }
+
+  if (items.length < state.chatLimit) {
+    state.hasMoreChats = false;
+  }
+
+  const previousScrollHeight = container.scrollHeight;
+  await renderChatsList(items, isInitial, previousScrollHeight);
+}
+
 // Fetch and render message history
 async function loadChatHistory(isInitial = false) {
   if (!state.apiKey) return;
@@ -375,34 +428,18 @@ async function loadChatHistory(isInitial = false) {
     const data = await res.json();
     
     if (res.ok && data.items && data.items.length > 0) {
-      const currentBubbleCount = Array.from(container.children).filter(el => el.id && el.id.startsWith('bubble-')).length;
-
-      if (data.items.length === currentBubbleCount && !isInitial) {
-        state.hasMoreChats = false;
-        showToast('โหลดประวัติบทสนทนาทั้งหมดเรียบร้อยแล้วจ้า ☁️🔒');
-        state.isLoadingChats = false;
-        if (loadingState) loadingState.classList.add('hidden');
-        if (scrollLoader) scrollLoader.classList.add('hidden');
-        return;
-      }
-
-      if (data.items.length < state.chatLimit) {
-        state.hasMoreChats = false;
-      }
-
-      const previousScrollHeight = container.scrollHeight;
-      await renderChatsList(data.items, isInitial, previousScrollHeight);
+      await handleChatHistorySync(data.items, isInitial, container, loadingState, scrollLoader);
     } else {
-      if (emptyState) emptyState.classList.remove('hidden');
-      state.hasMoreChats = false;
+      handleEmptyChatHistory(emptyState);
     }
   } catch (err) {
     showToast('Error syncing chat histories.');
     console.error(err);
   } finally {
-    state.isLoadingChats = false;
-    if (loadingState) loadingState.classList.add('hidden');
-    if (scrollLoader) scrollLoader.classList.add('hidden');
+    hideChatLoaders(loadingState, scrollLoader);
+    toggleThinkingIndicator(false);
+    state.isThinking = false;
+    state.isReloadingHistory = false;
   }
 }
 
@@ -540,9 +577,10 @@ function renderActionMessage(part) {
 }
 
 // Dynamically insert message elements into DOM
+// Dynamically insert message elements into DOM
 function appendMessageBubble(messageObj) {
   const container = document.getElementById('chat-messages-container');
-  const isUser = messageObj.sender_id !== 'cloudy' && messageObj.sender_id !== 'assistant' && messageObj.sender_id !== 'bot';
+  const isUser = messageObj.sender_id !== 'cloudy' && messageObj.sender_id !== 'assistant' && messageObj.sender_id !== 'bot' && messageObj.sender_id !== 'aria';
   const bubbleId = messageObj.id;
 
   // Check if duplicate element
@@ -553,7 +591,7 @@ function appendMessageBubble(messageObj) {
   bubbleWrapper.className = `flex flex-col ${isUser ? 'items-end' : 'items-start'} gap-1 w-full max-w-[85%] ${isUser ? 'ml-auto' : 'mr-auto'}`;
 
   const contentsDiv = document.createElement('div');
-  contentsDiv.className = 'w-full';
+  contentsDiv.className = 'w-full relative';
 
   // Iterate through message content blocks
   messageObj.content.forEach(part => {
@@ -567,6 +605,67 @@ function appendMessageBubble(messageObj) {
       contentsDiv.appendChild(renderActionMessage(part));
     }
   });
+
+  // For assistant message cards only, attach long-press gesture listeners
+  if (!isUser) {
+    let pressTimer;
+    let pressed = false;
+    
+    const startPress = (e) => {
+      // Ignore right-click
+      if (e.button === 2) return;
+      // Get pointer coordinates
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      
+      pressed = false;
+      pressTimer = setTimeout(() => {
+        pressed = true;
+        if (navigator.vibrate) navigator.vibrate(40); // small haptic tap
+        showReactionMenu(bubbleId, clientX, clientY);
+        // Swallow the synthetic `click` that browser fires when user releases
+        // after the long-press — prevents it reaching the window dismiss handler
+        contentsDiv.addEventListener('click', (e) => e.stopPropagation(), { once: true, capture: true });
+      }, 500); // long press hold threshold
+    };
+    
+    const cancelPress = () => {
+      if (!pressed) {
+        clearTimeout(pressTimer);
+      }
+      pressed = false;
+    };
+    
+    contentsDiv.addEventListener('mousedown', startPress);
+    contentsDiv.addEventListener('touchstart', startPress, { passive: true });
+    
+    contentsDiv.addEventListener('mouseup', cancelPress);
+    contentsDiv.addEventListener('mouseleave', cancelPress);
+    contentsDiv.addEventListener('touchend', cancelPress);
+    contentsDiv.addEventListener('touchcancel', cancelPress);
+    contentsDiv.addEventListener('touchmove', cancelPress);
+    
+    // Prevent default context menu on long-press (especially on mobile)
+    contentsDiv.addEventListener('contextmenu', (e) => e.preventDefault());
+    
+    contentsDiv.classList.add('cursor-pointer', 'select-none', 'transition-all');
+  }
+
+  // Render initial reaction badge if message already has feedback
+  const feedbackVal = messageObj.feedback || null;
+  if (feedbackVal) {
+    const badge = document.createElement('div');
+    badge.id = `reaction-badge-${bubbleId}`;
+    if (feedbackVal === 'like') {
+      badge.className = `absolute -bottom-2 -right-1 w-6 h-6 rounded-full flex items-center justify-center shadow-md border border-brandCoral/30 bg-[#1c1328]/95 select-none`;
+      badge.innerHTML = getHeartSvg('w-3 h-3');
+    } else {
+      badge.className = `absolute -bottom-2 -right-1 w-6 h-6 rounded-full flex items-center justify-center shadow-md border border-indigo-500/30 bg-[#1c1328]/95 select-none`;
+      badge.innerHTML = getAngrySvg('w-3 h-3');
+    }
+    // Static — no perpetual animation on history restore
+    contentsDiv.appendChild(badge);
+  }
 
   bubbleWrapper.appendChild(contentsDiv);
 
@@ -620,6 +719,8 @@ async function handleChatSubmit(e) {
 
   // Clean empty state
   document.getElementById('chat-empty-state').classList.add('hidden');
+  const chips = document.getElementById('chat-prompt-chips');
+  if (chips) chips.classList.add('hidden');
 
   // Append user bubble locally
   const mockId = 'user-msg-' + Date.now();
@@ -665,8 +766,20 @@ async function handleChatSubmit(e) {
 // Trigger central mobile quick prompt action route
 async function triggerCloudyAction(action) {
   if (state.isThinking || !state.apiKey) return;
+
+  if (action === 'expense') {
+    openExpenseModal();
+    return;
+  }
+
+  if (action === 'schedule') {
+    openScheduleModal();
+    return;
+  }
   
   document.getElementById('chat-empty-state').classList.add('hidden');
+  const chips = document.getElementById('chat-prompt-chips');
+  if (chips) chips.classList.add('hidden');
 
   let label = '';
   switch(action) {
@@ -777,8 +890,11 @@ async function streamAgentResponse() {
     }
   } finally {
     state.activeStreamReader = null;
-    toggleThinkingIndicator(false);
-    state.isThinking = false;
+    
+    if (!state.isReloadingHistory) {
+      toggleThinkingIndicator(false);
+      state.isThinking = false;
+    }
     
     if (!state.syncedCreditsViaSSE) {
       // Sync user profile tokens/credits only if not already synced via SSE done metadata
@@ -796,7 +912,8 @@ function handleAgentStreamEvent(event, data) {
 
   if (event === 'thinking') {
     const line = document.createElement('div');
-    line.innerHTML = `<span class="text-brandCoral">[${timeStr}]</span> Cloudy is thinking...`;
+    const thought = data.message || 'Cloudy is thinking...';
+    line.innerHTML = `<span class="text-brandCoral">[${timeStr}] 🧠 Thinking:</span> <span class="text-white/70">${thought}</span>`;
     logs.appendChild(line);
     logs.scrollTop = logs.scrollHeight;
     
@@ -828,6 +945,7 @@ function handleAgentStreamEvent(event, data) {
       state.syncedCreditsViaSSE = true;
     }
     
+    state.isReloadingHistory = true;
     loadChatHistory(true);
   }
   else if (event === 'error') {
@@ -848,8 +966,10 @@ function abortActiveSSE() {
 function toggleThinkingIndicator(show) {
   const panel = document.getElementById('react-thinking-panel');
   const submitBtn = document.getElementById('chat-send-btn');
+  const logs = document.getElementById('react-trace-logs');
   
   if (show) {
+    if (logs) logs.innerHTML = '';
     panel.classList.remove('hidden');
     submitBtn.disabled = true;
     submitBtn.classList.add('opacity-50', 'pointer-events-none');
@@ -1039,6 +1159,537 @@ window.addEventListener('click', () => {
   closeQuickMenu(menu, 260);
 });
 
+let selectedExpenseCategory = 'food&drink';
+
+function openExpenseModal() {
+  const modal = document.getElementById('expense-modal');
+  const sheet = document.getElementById('expense-sheet');
+  const input = document.getElementById('expense-textarea-input');
+  
+  // Set dynamic subtitle time
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const timeEl = document.getElementById('expense-modal-time');
+  if (timeEl) timeEl.innerText = `Today • ${timeStr}`;
+  
+  // Reset input and button
+  if (input) input.value = '';
+  onExpenseInputChanged();
+  
+  // Select default category 'food&drink'
+  const firstChip = document.querySelector('#expense-category-chips div');
+  if (firstChip) {
+    selectExpenseCategory('food&drink', firstChip);
+  }
+  
+  // Display overlay
+  if (modal) modal.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (modal) modal.style.opacity = '1';
+      if (sheet) {
+        sheet.classList.remove('translate-y-full');
+        sheet.classList.add('translate-y-0');
+      }
+    });
+  });
+}
+
+function closeExpenseModal() {
+  const modal = document.getElementById('expense-modal');
+  const sheet = document.getElementById('expense-sheet');
+  
+  if (sheet) {
+    sheet.classList.remove('translate-y-0');
+    sheet.classList.add('translate-y-full');
+  }
+  if (modal) {
+    modal.style.opacity = '0';
+  }
+  
+  setTimeout(() => {
+    if (modal) modal.classList.add('hidden');
+  }, 300);
+}
+
+function selectExpenseCategory(category, element) {
+  selectedExpenseCategory = category;
+  
+  // Remove active styling from all category chips
+  const chips = document.querySelectorAll('#expense-category-chips div');
+  chips.forEach(chip => {
+    chip.classList.remove('bg-[#f97050]/20', 'border-[#f97050]', 'text-[#f97050]', 'shadow-[0_0_12px_rgba(249,112,80,0.15)]');
+    chip.classList.add('bg-[#252233]', 'border-white/5', 'text-white/70');
+  });
+  
+  // Add active styling to clicked chip
+  element.classList.remove('bg-[#252233]', 'border-white/5', 'text-white/70');
+  element.classList.add('bg-[#f97050]/20', 'border-[#f97050]', 'text-[#f97050]', 'shadow-[0_0_12px_rgba(249,112,80,0.15)]');
+}
+
+function onExpenseInputChanged() {
+  const input = document.getElementById('expense-textarea-input');
+  const btn = document.getElementById('expense-save-btn');
+  if (!input || !btn) return;
+  const text = input.value.trim();
+  
+  if (text) {
+    btn.disabled = false;
+    btn.classList.remove('bg-[#221f2f]', 'text-white/30', 'cursor-not-allowed');
+    btn.classList.add('bg-gradient-to-br', 'from-[#ff6b4a]', 'to-[#e8431e]', 'text-white', 'cursor-pointer', 'active:scale-[0.98]');
+  } else {
+    btn.disabled = true;
+    btn.classList.remove('bg-gradient-to-br', 'from-[#ff6b4a]', 'to-[#e8431e]', 'text-white', 'cursor-pointer', 'active:scale-[0.98]');
+    btn.classList.add('bg-[#221f2f]', 'text-white/30', 'cursor-not-allowed');
+  }
+}
+
+async function submitExpenseForm() {
+  const input = document.getElementById('expense-textarea-input');
+  if (!input || !state.apiKey) return;
+  const text = input.value.trim();
+  if (!text) return;
+  
+  // Disable button while submitting
+  const btn = document.getElementById('expense-save-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Saving...';
+  }
+  
+  const lines = text.split('\n');
+  const expenses = [];
+  
+  const today = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD"
+  const nowTime = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' }); // "HH:MM"
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
+    
+    // Parse name and amount. E.g. "Coffee 145" or "Dinner 540.50"
+    const match = trimmedLine.match(/(.+?)\s+(\d+(?:\.\d+)?)/);
+    if (match) {
+      const subject = match[1].trim();
+      const amount = parseFloat(match[2]);
+      expenses.push({
+        subject,
+        amount,
+        category: selectedExpenseCategory,
+        currency: 'THB',
+        date: today,
+        time: nowTime
+      });
+    } else {
+      // If it doesn't match the subject + amount format, treat the entire line as subject and amount 0
+      expenses.push({
+        subject: trimmedLine,
+        amount: 0,
+        category: selectedExpenseCategory,
+        currency: 'THB',
+        date: today,
+        time: nowTime
+      });
+    }
+  }
+  
+  if (expenses.length === 0) {
+    showToast('Please enter at least one valid expense item. ⚠️');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = 'Save Expense';
+    }
+    return;
+  }
+  
+  try {
+    const res = await fetch('/poc/api/v1/expenses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': state.apiKey
+      },
+      body: JSON.stringify({ expenses })
+    });
+    
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Expenses saved successfully! 💰🎉');
+      closeExpenseModal();
+      await loadChatHistory(true);
+    } else {
+      showToast(data.error || 'Failed to save expense.');
+    }
+  } catch (err) {
+    showToast('Network error while saving expense.');
+    console.error(err);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = 'Save Expense';
+    }
+    onExpenseInputChanged();
+  }
+}
+
+// ── Schedule Modal ──────────────────────────────────────────
+
+function openScheduleModal() {
+  const modal = document.getElementById('schedule-modal');
+  const sheet = document.getElementById('schedule-sheet');
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const timeEl = document.getElementById('schedule-modal-time');
+  if (timeEl) timeEl.innerText = `Today • ${timeStr}`;
+
+  // Default: start = next full hour, end = start + 1h
+  const startInput = document.getElementById('schedule-start-input');
+  const endInput = document.getElementById('schedule-end-input');
+  if (startInput) {
+    const start = new Date(now);
+    start.setMinutes(0, 0, 0);
+    start.setHours(start.getHours() + 1);
+    const fmt = (d) => d.toISOString().slice(0, 16);
+    startInput.value = fmt(start);
+    const end = new Date(start);
+    end.setHours(end.getHours() + 1);
+    if (endInput) endInput.value = fmt(end);
+  }
+
+  const titleInput = document.getElementById('schedule-title-input');
+  if (titleInput) titleInput.value = '';
+  const noteInput = document.getElementById('schedule-note-input');
+  if (noteInput) noteInput.value = '';
+  const repeats = document.getElementById('schedule-repeats');
+  if (repeats) repeats.value = 'never';
+
+  onScheduleInputChanged();
+
+  if (modal) modal.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (modal) modal.style.opacity = '1';
+      if (sheet) {
+        sheet.classList.remove('translate-y-full');
+        sheet.classList.add('translate-y-0');
+      }
+    });
+  });
+}
+
+function closeScheduleModal() {
+  const modal = document.getElementById('schedule-modal');
+  const sheet = document.getElementById('schedule-sheet');
+  if (sheet) {
+    sheet.classList.remove('translate-y-0');
+    sheet.classList.add('translate-y-full');
+  }
+  setTimeout(() => {
+    if (modal) {
+      modal.style.opacity = '0';
+      modal.classList.add('hidden');
+    }
+  }, 300);
+}
+
+function onScheduleInputChanged() {
+  const title = (document.getElementById('schedule-title-input')?.value || '').trim();
+  const btn = document.getElementById('schedule-create-btn');
+  if (!btn) return;
+  if (title.length > 0) {
+    btn.disabled = false;
+    btn.classList.remove('bg-[#221f2f]', 'text-white/30', 'cursor-not-allowed');
+    btn.classList.add('bg-gradient-to-br', 'from-[#ff8754]', 'to-[#f45c22]', 'text-white', 'cursor-pointer', 'active:scale-[0.98]');
+  } else {
+    btn.disabled = true;
+    btn.classList.remove('bg-gradient-to-br', 'from-[#ff8754]', 'to-[#f45c22]', 'text-white', 'cursor-pointer', 'active:scale-[0.98]');
+    btn.classList.add('bg-[#221f2f]', 'text-white/30', 'cursor-not-allowed');
+  }
+}
+
+async function submitScheduleForm() {
+  const title = (document.getElementById('schedule-title-input')?.value || '').trim();
+  if (!title || !state.apiKey) return;
+
+  const startVal = document.getElementById('schedule-start-input')?.value || '';
+  const endVal = document.getElementById('schedule-end-input')?.value || '';
+  const repeats = document.getElementById('schedule-repeats')?.value || 'never';
+  const note = (document.getElementById('schedule-note-input')?.value || '').trim();
+
+  const btn = document.getElementById('schedule-create-btn');
+  if (btn) { btn.disabled = true; btn.innerText = 'Creating...'; }
+
+  const formatDT = (val) => val ? new Date(val).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  const repeatLabel = { daily: 'วัน', weekly: 'สัปดาห์', monthly: 'เดือน' };
+
+  let prompt = `เพิ่มกำหนดการ: "${title}"`;
+  if (startVal) prompt += ` เริ่ม ${formatDT(startVal)}`;
+  if (endVal) prompt += ` สิ้นสุด ${formatDT(endVal)}`;
+  if (repeats && repeats !== 'never') prompt += ` ซ้ำทุก${repeatLabel[repeats] || repeats}`;
+  if (note) prompt += ` หมายเหตุ: ${note}`;
+
+  closeScheduleModal();
+
+  document.getElementById('chat-empty-state').classList.add('hidden');
+  appendMessageBubble({
+    id: 'schedule-msg-' + Date.now(),
+    sender_id: state.username,
+    content: [{ type: 'text', text: prompt }],
+    created_at: new Date().toISOString()
+  });
+  scrollChatToBottom();
+
+  try {
+    state.isThinking = true;
+    toggleThinkingIndicator(true);
+
+    const res = await fetch('/poc/api/v1/chats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': state.apiKey },
+      body: JSON.stringify({ content: [{ type: 'text', text: prompt }] })
+    });
+
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.error || 'Failed to create schedule.');
+    }
+
+    await streamAgentResponse();
+  } catch (err) {
+    showToast(err.message);
+    toggleThinkingIndicator(false);
+    state.isThinking = false;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = 'Create'; }
+    onScheduleInputChanged();
+  }
+}
+
+function getOrCreateChatBubbleState(messageId) {
+  let currentBubble = state.chats.find(c => c.id === messageId);
+  if (!currentBubble) {
+    currentBubble = { id: messageId, feedback: null };
+    state.chats.push(currentBubble);
+  }
+  return currentBubble;
+}
+
+function showReactionMenu(messageId, clientX, clientY) {
+  // Dismiss any active menus first
+  dismissReactionMenu();
+
+  const bubbleEl = document.getElementById(`bubble-${messageId}`);
+  if (!bubbleEl) return;
+  
+  const cardEl = bubbleEl.querySelector('.relative'); // select the contents card
+  if (!cardEl) return;
+  
+  // Find current feedback state
+  const currentBubble = getOrCreateChatBubbleState(messageId);
+  const feedbackVal = currentBubble.feedback || null;
+
+  // Create reaction menu element
+  // Use fixed positioning and append to body to avoid overflow-hidden/clip issues
+  const menu = document.createElement('div');
+  menu.id = 'reaction-context-menu';
+  menu.className = 'fixed z-[9998] bg-[#151025]/95 border border-white/10 backdrop-blur-md rounded-full px-3 py-2 flex items-center gap-3.5 shadow-2xl transition-all duration-200 transform scale-90 opacity-0 pointer-events-auto select-none';
+  
+  // Custom glass shadow/glowing effects for active states
+  const likeClass = feedbackVal === 'like' 
+    ? 'bg-brandCoral/20 border border-brandCoral/40 scale-[1.15] shadow-[0_0_12px_rgba(249,112,80,0.3)] hover:scale-[1.25] transition-all duration-200 ease-out' 
+    : 'opacity-65 border border-transparent hover:opacity-100 hover:scale-[1.25] transition-all duration-200 ease-out';
+  const dislikeClass = feedbackVal === 'dislike' 
+    ? 'bg-indigo-500/20 border border-indigo-500/40 scale-[1.15] shadow-[0_0_12px_rgba(129,140,248,0.3)] hover:scale-[1.25] transition-all duration-200 ease-out' 
+    : 'opacity-65 border border-transparent hover:opacity-100 hover:scale-[1.25] transition-all duration-200 ease-out';
+
+  menu.innerHTML = `
+    <button onclick="triggerReactionAction('${messageId}', 'like', event)" class="w-9 h-9 rounded-full flex items-center justify-center transition-all duration-150 active:scale-90 ${likeClass}">
+      ${getHeartSvg('w-5 h-5')}
+    </button>
+    <div class="w-[1px] h-4 bg-white/10"></div>
+    <button onclick="triggerReactionAction('${messageId}', 'dislike', event)" class="w-9 h-9 rounded-full flex items-center justify-center transition-all duration-150 active:scale-90 ${dislikeClass}">
+      ${getAngrySvg('w-5 h-5')}
+    </button>
+  `;
+
+  // Append to body to escape any overflow:hidden or clip constraints
+  document.body.appendChild(menu);
+
+  // Use viewport-fixed coordinates from getBoundingClientRect
+  const cardRect = cardEl.getBoundingClientRect();
+  const menuWidth = 120; // approximate pill width
+  const menuHeight = 48; // approximate pill height
+
+  // Center the pill horizontally above the card, 12px gap above top edge
+  let fixedLeft = cardRect.left + (cardRect.width / 2) - (menuWidth / 2);
+  let fixedTop = cardRect.top - menuHeight - 12;
+
+  // Clamp within viewport bounds
+  fixedLeft = Math.max(8, Math.min(fixedLeft, window.innerWidth - menuWidth - 8));
+  fixedTop = Math.max(8, fixedTop);
+
+  menu.style.left = `${fixedLeft}px`;
+  menu.style.top = `${fixedTop}px`;
+
+  // Trigger smooth reveal animation frame
+  requestAnimationFrame(() => {
+    menu.classList.remove('scale-90', 'opacity-0');
+    menu.classList.add('scale-100', 'opacity-100');
+  });
+
+  // Attach dynamic window event listener to close it when clicking elsewhere
+  setTimeout(() => {
+    window.addEventListener('click', dismissReactionMenuOnOutsideClick);
+    window.addEventListener('touchstart', dismissReactionMenuOnOutsideClick, { passive: true });
+  }, 50);
+}
+
+function dismissReactionMenu() {
+  const menu = document.getElementById('reaction-context-menu');
+  if (!menu) return;
+  
+  menu.classList.remove('scale-100', 'opacity-100');
+  menu.classList.add('scale-90', 'opacity-0');
+  setTimeout(() => {
+    if (menu.parentNode) menu.parentNode.removeChild(menu);
+  }, 200);
+  
+  window.removeEventListener('click', dismissReactionMenuOnOutsideClick);
+  window.removeEventListener('touchstart', dismissReactionMenuOnOutsideClick);
+}
+
+function dismissReactionMenuOnOutsideClick(event) {
+  const menu = document.getElementById('reaction-context-menu');
+  if (menu && !menu.contains(event.target)) {
+    dismissReactionMenu();
+  }
+}
+
+function triggerReactionAction(messageId, feedbackType, event) {
+  if (event) event.stopPropagation();
+  
+  // Check if we are activating this feedback
+  const currentBubble = getOrCreateChatBubbleState(messageId);
+  const currentFeedback = currentBubble.feedback || null;
+  const isActivating = currentFeedback !== feedbackType;
+  
+  if (isActivating) {
+    let startX = window.innerWidth / 2;
+    let startY = window.innerHeight / 2;
+    if (event && typeof event.clientX === 'number' && typeof event.clientY === 'number') {
+      startX = event.clientX;
+      startY = event.clientY;
+    }
+    spawnReactionParticle(feedbackType, startX, startY);
+  }
+  
+  submitMessageFeedback(messageId, feedbackType);
+  dismissReactionMenu();
+}
+
+function spawnReactionParticle(feedbackType, startX, startY) {
+  const particle = document.createElement('div');
+  particle.className = 'fixed z-[9999] pointer-events-none select-none text-4xl transition-all duration-700 ease-out transform scale-75 opacity-100 flex items-center justify-center';
+  particle.innerHTML = feedbackType === 'like' ? '👍' : '👎';
+  particle.style.left = `${startX - 20}px`;
+  particle.style.top = `${startY - 20}px`;
+  
+  document.body.appendChild(particle);
+  
+  // Force layout reflow
+  particle.offsetHeight;
+  
+  // Scale and rise upwards before fading out
+  requestAnimationFrame(() => {
+    particle.style.transform = 'translateY(-80px) scale(1.6)';
+    particle.style.opacity = '0';
+  });
+  
+  setTimeout(() => {
+    particle.remove();
+  }, 750);
+}
+
+function updateMessageFeedbackDOM(messageId, newFeedback) {
+  const bubbleWrapper = document.getElementById(`bubble-${messageId}`);
+  if (!bubbleWrapper) return;
+
+  const contentsDiv = bubbleWrapper.querySelector('.relative');
+  if (!contentsDiv) return;
+
+  // Remove old badge if exists
+  const oldBadge = document.getElementById(`reaction-badge-${messageId}`);
+  if (oldBadge) oldBadge.remove();
+
+  if (!newFeedback) return;
+
+  const badge = document.createElement('div');
+  badge.id = `reaction-badge-${messageId}`;
+  
+  if (newFeedback === 'like') {
+    badge.className = `absolute -bottom-2 -right-1 w-6 h-6 rounded-full flex items-center justify-center shadow-md border border-brandCoral/30 bg-[#1c1328]/95 select-none`;
+    badge.innerHTML = getHeartSvg('w-3 h-3');
+  } else {
+    badge.className = `absolute -bottom-2 -right-1 w-6 h-6 rounded-full flex items-center justify-center shadow-md border border-indigo-500/30 bg-[#1c1328]/95 select-none`;
+    badge.innerHTML = getAngrySvg('w-3 h-3');
+  }
+  
+  // One-shot scale-in entrance — pops in then stays static
+  badge.style.transform = 'scale(0)';
+  badge.style.transition = 'transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1)';
+  contentsDiv.appendChild(badge);
+  requestAnimationFrame(() => {
+    badge.style.transform = 'scale(1)';
+  });
+}
+
+async function submitMessageFeedback(messageId, feedbackType) {
+  if (!state.apiKey) return;
+  
+  // Find currently active feedback state
+  const currentBubble = getOrCreateChatBubbleState(messageId);
+  const currentFeedback = currentBubble.feedback || null;
+  
+  // Toggle: if they click the same one, clear it (set to null)
+  const newFeedback = currentFeedback === feedbackType ? null : feedbackType;
+  
+  try {
+    const res = await fetch('/poc/api/v1/chats/feedback', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': state.apiKey
+      },
+      body: JSON.stringify({ messageId, feedback: newFeedback })
+    });
+    
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(data.error || 'Failed to submit feedback.');
+      return;
+    }
+
+    if (newFeedback) {
+      showToast(newFeedback === 'like' 
+        ? `คุณได้กดถูกใจข้อความนี้แล้ว 👍 (ขอบคุณสำหรับกำลังใจนะจ๊ะ! ☁️)` 
+        : `คุณได้กดส่งคำติชมข้อความนี้แล้ว 👎 (คลาวดี้จะนำคำแนะนำไปปรับปรุงตัวนะจ๊ะ! ✨)`);
+    } else {
+      showToast(`ยกเลิกการส่งคำติชมแล้วจ้า`);
+    }
+    
+    // Update local state value so it renders immediately next time
+    if (currentBubble) currentBubble.feedback = newFeedback;
+    
+    // Update UI reaction badge instantly!
+    updateMessageFeedbackDOM(messageId, newFeedback);
+    
+  } catch (err) {
+    showToast('Network error while saving feedback.');
+    console.error(err);
+  }
+}
+
 // Attach key functions to window for global access
 window.switchLoginTab = switchLoginTab;
 window.handleAuthSubmit = handleAuthSubmit;
@@ -1058,4 +1709,15 @@ window.closeCreditModal = closeCreditModal;
 window.purchaseCreditPackage = purchaseCreditPackage;
 window.toggleQuickMenu = toggleQuickMenu;
 window.clickQuickMenuItem = clickQuickMenuItem;
+window.openExpenseModal = openExpenseModal;
+window.closeExpenseModal = closeExpenseModal;
+window.selectExpenseCategory = selectExpenseCategory;
+window.onExpenseInputChanged = onExpenseInputChanged;
+window.submitExpenseForm = submitExpenseForm;
+window.submitMessageFeedback = submitMessageFeedback;
+window.triggerReactionAction = triggerReactionAction;
+window.openScheduleModal = openScheduleModal;
+window.closeScheduleModal = closeScheduleModal;
+window.onScheduleInputChanged = onScheduleInputChanged;
+window.submitScheduleForm = submitScheduleForm;
 

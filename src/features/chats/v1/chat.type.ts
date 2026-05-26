@@ -8,6 +8,7 @@ import type {
   chatSseEventSchema,
   chatActionPayloadSchema,
   chatMoodUpdatePayloadSchema,
+  chatFeedbackPayloadSchema,
 } from '#/features/chats/v1/chat.schema'
 
 export type TChatFilterPayload = z.infer<typeof chatFilterPayloadSchema>
@@ -17,6 +18,7 @@ export type TChatItemResponse = z.infer<typeof chatItemResponseSchema>
 export type TChatSseEvent = z.infer<typeof chatSseEventSchema>
 export type TChatActionPayload = z.infer<typeof chatActionPayloadSchema>
 export type TChatMoodUpdatePayload = z.infer<typeof chatMoodUpdatePayloadSchema>
+export type TChatFeedbackPayload = z.infer<typeof chatFeedbackPayloadSchema>
 
 
 export type TChatRawResponse = {
@@ -24,6 +26,7 @@ export type TChatRawResponse = {
   user_id?: string
   sender_id?: string
   message?: string
+  feedback?: 'like' | 'dislike' | null
   created_at?: Date | string
   input_tokens?: number
   output_tokens?: number

@@ -100,5 +100,23 @@ export const updateMoodDoc: ReturnType<typeof describeRoute> = describeRoute({
   },
 })
 
+export const updateFeedbackDoc: ReturnType<typeof describeRoute> = describeRoute({
+  tags: [ERouteTag.CHAT],
+  summary: 'Update feedback (like/dislike) for a chat message',
+  description: 'Records user positive (like) or negative (dislike) feedback on an assistant chat message.',
+  security: [{ ApiKeyAuth: [] }],
+  responses: {
+    200: {
+      description: 'Successfully updated chat feedback',
+      content: {
+        'application/json': {
+          schema: resolver(successSchema),
+        },
+      },
+    },
+    ...DEFAULT_RESPONSE,
+  },
+})
+
 
 

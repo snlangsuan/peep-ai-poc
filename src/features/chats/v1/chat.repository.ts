@@ -19,6 +19,7 @@ export class ChatRepository {
         user_id: data.user_id || data.userId,
         sender_id: data.sender_id,
         message: data.message,
+        feedback: data.feedback || null,
         created_at: data.created_at?.toDate?.()?.toISOString() || data.created_at,
         input_tokens: data.input_tokens,
         output_tokens: data.output_tokens,

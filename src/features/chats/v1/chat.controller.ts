@@ -10,7 +10,7 @@ import { getUtcTime, getLocalTime } from '#/common/utils/datetime.util'
 import type { Bindings, JsonInputSchema, QueryInputSchema, Variables } from '#/common/types/app.type'
 import type { TSuccessResponse } from '#/common/types/response.type'
 import type { ChatService } from '#/features/chats/v1/chat.service'
-import type { TChatCreatePayload, TChatFilterPayload, TChatItemResponse, TChatActionPayload, TChatMoodUpdatePayload } from '#/features/chats/v1/chat.type'
+import type { TChatCreatePayload, TChatFilterPayload, TChatItemResponse, TChatActionPayload, TChatMoodUpdatePayload, TChatFeedbackPayload } from '#/features/chats/v1/chat.type'
 import type { Context } from 'hono'
 
 export class ChatController {
@@ -94,6 +94,7 @@ export class ChatController {
           typeof item.created_at === 'string'
             ? item.created_at
             : item.created_at?.toISOString() || new Date().toISOString(),
+        feedback: item.feedback || null,
         input_tokens: item.input_tokens,
         output_tokens: item.output_tokens,
         total_tokens: item.total_tokens,
@@ -263,6 +264,41 @@ export class ChatController {
       successResponseSchema.parse({
         success: true,
         message: 'อัปเดตอารมณ์เรียบร้อยแล้วจ้า!',
+      }),
+    )
+  }
+
+  updateFeedback = async <
+    E extends { Bindings: Bindings; Variables: Variables },
+    P extends string,
+    I extends JsonInputSchema<TChatFeedbackPayload>,
+  >(
+    c: Context<E, P, I>,
+  ): Promise<Response> => {
+    const userId = c.get('user_id')
+    const body = c.req.valid('json')
+    const { messageId, feedback } = body
+
+    const docRef = db.collection('chats').doc(messageId)
+    const doc = await docRef.get()
+
+    if (!doc.exists) {
+      return c.json({ error: 'Chat message not found.' }, 404)
+    }
+
+    const data = doc.data()
+    if (data?.user_id !== userId) {
+      return c.json({ error: 'You do not have permission to update this message.' }, 403)
+    }
+
+    await docRef.update({
+      feedback: feedback || null,
+    })
+
+    return c.json<TSuccessResponse>(
+      successResponseSchema.parse({
+        success: true,
+        message: 'อัปเดต feedback เรียบร้อยแล้วจ้า!',
       }),
     )
   }
