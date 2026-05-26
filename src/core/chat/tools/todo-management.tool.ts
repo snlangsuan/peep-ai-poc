@@ -1,7 +1,7 @@
 import { TodoService } from '#/features/todos/v1/todo.service'
 import { TodoRepository } from '#/features/todos/v1/todo.repository'
 
-import type { IChatContext, IChatTool } from '#/core/chat/chat.type'
+import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class TodoManagementTool implements IChatTool {
   readonly name = 'manage_todos'

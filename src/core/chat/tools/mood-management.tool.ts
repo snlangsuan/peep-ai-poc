@@ -1,7 +1,7 @@
 import { db } from '#/common/libs/firebase.lib'
 import { getUtcTime, getLocalTime } from '#/common/utils/datetime.util'
 
-import type { IChatContext, IChatTool } from '#/core/chat/chat.type'
+import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class MoodManagementTool implements IChatTool {
   readonly name = 'manage_mood'

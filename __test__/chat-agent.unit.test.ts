@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from 'bun:test'
 import admin from 'firebase-admin'
-import { ChatAgent } from '#/core/chat/chat-agent'
-import type { IChatAgentResult, IChatTool } from '#/core/chat/chat.type'
+import { ChatAgent } from '~/src/core/chat/chat-agent'
+import type { IChatAgentResult, IChatTool } from '~/src/core/chat/chat.type'
 import type { GenerateContentResponse } from '@google/genai'
 
 const mockGenerate = mock(async (): Promise<GenerateContentResponse> => {

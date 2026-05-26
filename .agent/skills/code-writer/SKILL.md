@@ -53,6 +53,34 @@ Before writing any imports, you **must** check `tsconfig.json` to verify the con
 
 ---
 
+## 📁 Project Directory Structure & Core Modules
+
+The repository follows a clean, modular layered architecture. Below is the strict layout and responsibility mapping for each directory:
+
+### 1. `src/common/` (Shared Modules)
+This directory houses all globally shared, feature-agnostic utility files, configurations, and common layers:
+* **`src/common/constants/`**: Globally immutable configurations, shared static lists, and enum maps.
+* **`src/common/exceptions/`**: Custom application exception classes (e.g., standard HTTP errors, entity not found errors).
+* **`src/common/libs/`**: Wrappers and instantiations for third-party libraries (e.g., Firestore `db` connection, Pino `logger` library, SSE broker).
+* **`src/common/schemas/`**: Shared Zod schemas (e.g., general request/response schemas, shared datetime filters, pagination inputs).
+* **`src/common/types/`**: Shared global TypeScript types and core application types (e.g., Context configurations, app bindings, Hono variables).
+* **`src/common/utils/`**: Reusable pure helper functions (e.g., datetime parsers, UUID generators, cryptography, payload sanitizers).
+
+### 2. `src/core/` (Core Business Logic)
+* Stores the domain-driven, core **Business Logic** and high-level orchestrators of the system that are independent of HTTP delivery frameworks (e.g., the ReAct AI Agent execution loops, agent memory processors, prompt templates, core tasks, and AI tools).
+
+### 3. `src/infrastructure/` (Delivery Framework & Drivers)
+This layer handles incoming HTTP delivery, Hono-specific adapters, core application middlewares, and standard OpenAPI documentation metadata:
+* **`src/infrastructure/http/middlewares/`**: All global and route-specific Hono HTTP middlewares (e.g., `authMiddleware` for JWT/API key validation, `zValidator` for input mapping, CORS, error boundaries).
+* **`src/infrastructure/http/openapi/`**: Global OpenAPI/Swagger setup configurations, generic doc formats, and base metadata schema configurations.
+* **`src/infrastructure/http/routes/[version]/`**: Hono route routers organized by API version (e.g., `routes/v1/`). Houses individual `.route.ts` files registering paths, applying middlewares, and invoking controllers, mapped in `index.ts` of the version directory.
+
+### 4. `src/features/[name]/[version]/` (Feature-Specific Domain Scaffolding)
+Houses the modular feature domains, divided by plural feature directories (e.g., `features/chats/v1/`):
+* Contains singular feature layers (`chat.schema.ts`, `chat.type.ts`, `chat.repository.ts`, `chat.service.ts`, `chat.controller.ts`, `chat.openapi.ts`).
+
+---
+
 ## 🏗️ Feature-Specific Architectural Standards (src/features/[plural_name]/v1/)
 
 When building or modifying API endpoints inside the feature directories, follow these precise structural patterns:

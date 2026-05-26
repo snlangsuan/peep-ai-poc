@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
-import { authMiddleware } from '#/core/middlewares/auth.middleware'
-import { zValidator } from '#/core/middlewares/validator.middleware'
+import { authMiddleware } from '#/infrastructure/http/middlewares/auth.middleware'
+import { zValidator } from '#/infrastructure/http/middlewares/validator.middleware'
 import { UserController } from '#/features/users/v1/user.controller'
 import { createDoc, getInfoDoc, loginDoc } from '#/features/users/v1/user.openapi'
 import { UserRepository } from '#/features/users/v1/user.repository'

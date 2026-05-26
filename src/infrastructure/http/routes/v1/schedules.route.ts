@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
-import { authMiddleware } from '#/core/middlewares/auth.middleware'
-import { zValidator } from '#/core/middlewares/validator.middleware'
+import { authMiddleware } from '#/infrastructure/http/middlewares/auth.middleware'
+import { zValidator } from '#/infrastructure/http/middlewares/validator.middleware'
 import { ScheduleController } from '#/features/schedules/v1/schedule.controller'
 import { createDoc, deleteDoc, getDoc, listDoc, updateDoc } from '#/features/schedules/v1/schedule.openapi'
 import { ScheduleRepository } from '#/features/schedules/v1/schedule.repository'

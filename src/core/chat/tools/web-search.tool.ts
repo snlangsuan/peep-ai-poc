@@ -1,6 +1,6 @@
 import { envVariables } from '#/factory'
 
-import type { IChatContext, IChatTool } from '#/core/chat/chat.type'
+import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class WebSearchTool implements IChatTool {
   readonly name = 'web_search'

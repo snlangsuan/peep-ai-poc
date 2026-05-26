@@ -1,10 +1,10 @@
 import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
-import { ChatAgent } from '#/core/chat/chat-agent'
-import { LoggingTask } from '#/core/chat/tasks/logging.task'
-import { SentimentTask } from '#/core/chat/tasks/sentiment.task'
+import { ChatAgent } from '~/src/core/chat/chat-agent'
+import { LoggingTask } from '~/src/core/chat/tasks/logging.task'
+import { SentimentTask } from '~/src/core/chat/tasks/sentiment.task'
 
-import type { TChatAgentThinkingStatus } from '#/core/chat/chat.type'
+import type { TChatAgentThinkingStatus } from '~/src/core/chat/chat.type'
 
 async function run(): Promise<void> {
   logger.info('Starting ChatAgent memory learning and persistence tests...')

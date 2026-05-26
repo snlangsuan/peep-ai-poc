@@ -1,7 +1,7 @@
 import { ExpenseService } from '#/features/expenses/v1/expense.service'
 import { ExpenseRepository } from '#/features/expenses/v1/expense.repository'
 
-import type { IChatContext, IChatTool } from '#/core/chat/chat.type'
+import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class ExpenseManagementTool implements IChatTool {
   readonly name = 'manage_expenses'

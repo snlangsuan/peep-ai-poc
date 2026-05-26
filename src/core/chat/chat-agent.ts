@@ -4,7 +4,7 @@ import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
 import { AIService } from '#/common/services/ai.service'
 import { getLocalTime, getUtcTime } from '#/common/utils/datetime.util'
-import { parseQueryInput, mapInputToOpenAIContent, mapParametersToOpenAI } from '#/core/chat/chat-mapper'
+import { parseQueryInput, mapInputToOpenAIContent, mapParametersToOpenAI } from '~/src/core/chat/chat-mapper'
 import { envVariables } from '#/factory'
 import { AGENT_SYSTEM_INSTRUCTION, DEFAULT_PERSONA } from '#/common/constants/chat.constant'
 
@@ -18,7 +18,7 @@ import type {
   IChatIntent,
   TChatMessageItem,
   TThinkCallback,
-} from '#/core/chat/chat.type'
+} from '~/src/core/chat/chat.type'
 import type { Content, Tool, GenerateContentResponse, Part } from '@google/genai'
 
 // ==========================================

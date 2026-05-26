@@ -1,9 +1,9 @@
 import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
-import { ChatAgent } from '#/core/chat/chat-agent'
+import { ChatAgent } from '~/src/core/chat/chat-agent'
 import { getUtcTime } from '#/common/utils/datetime.util'
 
-import type { TChatAgentThinkingStatus } from '#/core/chat/chat.type'
+import type { TChatAgentThinkingStatus } from '~/src/core/chat/chat.type'
 
 const TOTAL_RECORDS = 100
 const HISTORY_WINDOW = 20

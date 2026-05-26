@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
-import { authMiddleware } from '#/core/middlewares/auth.middleware'
-import { zValidator } from '#/core/middlewares/validator.middleware'
+import { authMiddleware } from '#/infrastructure/http/middlewares/auth.middleware'
+import { zValidator } from '#/infrastructure/http/middlewares/validator.middleware'
 import { TodoController } from '#/features/todos/v1/todo.controller'
 import { createDoc, deleteDoc, getDoc, listDoc, updateDoc } from '#/features/todos/v1/todo.openapi'
 import { TodoRepository } from '#/features/todos/v1/todo.repository'
