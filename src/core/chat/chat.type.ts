@@ -21,6 +21,8 @@ export interface IChatContext {
 
 export interface IChatTask {
   name: string
+  skill?: string
+  skillInstruction?: string
   execute(context: IChatContext): Promise<void>
 }
 

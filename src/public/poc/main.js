@@ -500,40 +500,36 @@ function renderTextMessage(part, isUser) {
 // Helper to render interactive mood cards
 function renderMoodCardMessage(part, bubbleId) {
   const card = document.createElement('div');
-  card.className = 'w-full bg-[#18112c]/90 border border-white/10 rounded-2xl p-4 shadow-lg flex flex-col gap-3 mt-1.5';
-  
-  const optionsHtml = part.options.map(mood => {
-    const isSelected = part.selected_mood === mood;
-    const isAnySelected = part.selected_mood !== null && part.selected_mood !== undefined;
-    const btnClass = isSelected 
-      ? 'bg-brandCoral/20 border-brandCoral text-brandCoral shadow-[0_0_12px_rgba(232,92,65,0.25)]' 
-      : 'bg-white/5 border-white/10 text-white/80 hover:bg-white/10 disabled:opacity-60 disabled:hover:bg-white/5';
-    
+  card.className = 'w-full bg-[#181524]/95 border border-white/5 rounded-[24px] p-5 shadow-[0_12px_36px_rgba(0,0,0,0.4)] flex flex-col gap-4 mt-1.5 select-none';
+
+  const moods = [
+    { key: 'Great', emoji: '😍', label: 'Great' },
+    { key: 'Good', emoji: '😊', label: 'Good' },
+    { key: 'Okay', emoji: '😐', label: 'Okay' },
+    { key: 'Low', emoji: '🙁', label: 'Low' },
+    { key: 'Bad', emoji: '☹️', label: 'Bad' }
+  ];
+
+  const optionsHtml = moods.map(m => {
+    let btnClass = 'bg-[#252233] border-white/5 text-white/70 hover:bg-[#2f2b42] hover:text-white active:scale-95';
+
     return `
       <button 
-        onclick="submitUserMood('${bubbleId}', '${mood}')"
-        ${isAnySelected ? 'disabled' : ''}
-        class="py-2.5 px-3 rounded-xl text-xs font-semibold border transition-all ${btnClass}"
-      >${mood}</button>
+        onclick="submitUserMood('${bubbleId}', '${m.key}')"
+        data-mood="${m.key}"
+        class="flex-1 flex flex-col items-center justify-center py-4 px-1 rounded-2xl border transition-all duration-200 group ${btnClass}"
+      >
+        <span class="text-3xl mb-2.5 transition-transform duration-200 group-hover:scale-110">${m.emoji}</span>
+        <span class="text-[12px] font-semibold tracking-wide">${m.label}</span>
+      </button>
     `;
   }).join('');
 
-  const statusHtml = part.selected_mood 
-    ? `<div class="text-[11px] text-green-400 font-semibold flex items-center gap-1 mt-1 justify-center">
-        <span>✓</span> บันทึกอารมณ์เป็น "${part.selected_mood}" เรียบร้อยจ้า!
-       </div>` 
-    : '';
-
   card.innerHTML = `
-    <div class="flex items-center gap-2">
-      <span class="text-base">☁️</span>
-      <span class="text-[13.5px] font-bold text-white/90">Daily Mood Check</span>
-    </div>
-    <p class="text-[12.5px] text-white/60">วันนี้คุณรู้สึกอย่างไรบ้าง? มาแบ่งปันกับคลาวดี้หน่อยนะ ☁️✨</p>
-    <div class="grid grid-cols-2 gap-2 mt-1.5" id="mood-options-${bubbleId}">
+    <span class="text-[14px] text-white/55 font-semibold tracking-wide">How are you feeling right now?</span>
+    <div class="flex items-center justify-between gap-2 mt-1" id="mood-options-${bubbleId}">
       ${optionsHtml}
     </div>
-    ${statusHtml}
   `;
   return card;
 }
@@ -578,6 +574,69 @@ function renderActionMessage(part) {
 
 // Dynamically insert message elements into DOM
 // Dynamically insert message elements into DOM
+// Helper to handle long-press gesture on assistant bubbles to reveal the reaction menu
+function attachLongPressReaction(element, bubbleId) {
+  let pressTimer;
+  let pressed = false;
+  
+  const startPress = (e) => {
+    // Ignore right-click
+    if (e.button === 2) return;
+    // Get pointer coordinates
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    
+    pressed = false;
+    pressTimer = setTimeout(() => {
+      pressed = true;
+      if (navigator.vibrate) navigator.vibrate(40); // small haptic tap
+      showReactionMenu(bubbleId, clientX, clientY);
+      // Swallow synthetic click from releasing long press
+      element.addEventListener('click', (e) => e.stopPropagation(), { once: true, capture: true });
+    }, 500); // long press hold threshold
+  };
+  
+  const cancelPress = () => {
+    if (!pressed) {
+      clearTimeout(pressTimer);
+    }
+    pressed = false;
+  };
+  
+  element.addEventListener('mousedown', startPress);
+  element.addEventListener('touchstart', startPress, { passive: true });
+  
+  element.addEventListener('mouseup', cancelPress);
+  element.addEventListener('mouseleave', cancelPress);
+  element.addEventListener('touchend', cancelPress);
+  element.addEventListener('touchcancel', cancelPress);
+  element.addEventListener('touchmove', cancelPress);
+  
+  // Prevent default context menu on long-press (especially on mobile)
+  element.addEventListener('contextmenu', (e) => e.preventDefault());
+  
+  element.classList.add('cursor-pointer', 'select-none', 'transition-all');
+}
+
+// Helper to render initial reaction badge if message already has feedback
+function renderReactionBadge(contentsDiv, bubbleId, feedbackVal) {
+  if (!feedbackVal) return;
+  
+  const badge = document.createElement('div');
+  badge.id = `reaction-badge-${bubbleId}`;
+  
+  if (feedbackVal === 'like') {
+    badge.className = `absolute -bottom-2 -right-1 w-6 h-6 rounded-full flex items-center justify-center shadow-md border border-brandCoral/30 bg-[#1c1328]/95 select-none`;
+    badge.innerHTML = getHeartSvg('w-3 h-3');
+  } else {
+    badge.className = `absolute -bottom-2 -right-1 w-6 h-6 rounded-full flex items-center justify-center shadow-md border border-indigo-500/30 bg-[#1c1328]/95 select-none`;
+    badge.innerHTML = getAngrySvg('w-3 h-3');
+  }
+  
+  contentsDiv.appendChild(badge);
+}
+
+// Dynamically insert message elements into DOM
 function appendMessageBubble(messageObj) {
   const container = document.getElementById('chat-messages-container');
   const isUser = messageObj.sender_id !== 'cloudy' && messageObj.sender_id !== 'assistant' && messageObj.sender_id !== 'bot' && messageObj.sender_id !== 'aria';
@@ -606,66 +665,13 @@ function appendMessageBubble(messageObj) {
     }
   });
 
-  // For assistant message cards only, attach long-press gesture listeners
+  // Attach long-press reactions for assistant cards
   if (!isUser) {
-    let pressTimer;
-    let pressed = false;
-    
-    const startPress = (e) => {
-      // Ignore right-click
-      if (e.button === 2) return;
-      // Get pointer coordinates
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      
-      pressed = false;
-      pressTimer = setTimeout(() => {
-        pressed = true;
-        if (navigator.vibrate) navigator.vibrate(40); // small haptic tap
-        showReactionMenu(bubbleId, clientX, clientY);
-        // Swallow the synthetic `click` that browser fires when user releases
-        // after the long-press — prevents it reaching the window dismiss handler
-        contentsDiv.addEventListener('click', (e) => e.stopPropagation(), { once: true, capture: true });
-      }, 500); // long press hold threshold
-    };
-    
-    const cancelPress = () => {
-      if (!pressed) {
-        clearTimeout(pressTimer);
-      }
-      pressed = false;
-    };
-    
-    contentsDiv.addEventListener('mousedown', startPress);
-    contentsDiv.addEventListener('touchstart', startPress, { passive: true });
-    
-    contentsDiv.addEventListener('mouseup', cancelPress);
-    contentsDiv.addEventListener('mouseleave', cancelPress);
-    contentsDiv.addEventListener('touchend', cancelPress);
-    contentsDiv.addEventListener('touchcancel', cancelPress);
-    contentsDiv.addEventListener('touchmove', cancelPress);
-    
-    // Prevent default context menu on long-press (especially on mobile)
-    contentsDiv.addEventListener('contextmenu', (e) => e.preventDefault());
-    
-    contentsDiv.classList.add('cursor-pointer', 'select-none', 'transition-all');
+    attachLongPressReaction(contentsDiv, bubbleId);
   }
 
-  // Render initial reaction badge if message already has feedback
-  const feedbackVal = messageObj.feedback || null;
-  if (feedbackVal) {
-    const badge = document.createElement('div');
-    badge.id = `reaction-badge-${bubbleId}`;
-    if (feedbackVal === 'like') {
-      badge.className = `absolute -bottom-2 -right-1 w-6 h-6 rounded-full flex items-center justify-center shadow-md border border-brandCoral/30 bg-[#1c1328]/95 select-none`;
-      badge.innerHTML = getHeartSvg('w-3 h-3');
-    } else {
-      badge.className = `absolute -bottom-2 -right-1 w-6 h-6 rounded-full flex items-center justify-center shadow-md border border-indigo-500/30 bg-[#1c1328]/95 select-none`;
-      badge.innerHTML = getAngrySvg('w-3 h-3');
-    }
-    // Static — no perpetual animation on history restore
-    contentsDiv.appendChild(badge);
-  }
+  // Render reaction badges
+  renderReactionBadge(contentsDiv, bubbleId, messageObj.feedback);
 
   bubbleWrapper.appendChild(contentsDiv);
 
@@ -683,22 +689,56 @@ function appendMessageBubble(messageObj) {
 // Submit daily mood from card options
 async function submitUserMood(messageId, mood) {
   if (!state.apiKey) return;
+  const sessionId = messageId; // Using messageId as session_id for duplicate request prevention on this specific card
+
   try {
-    const res = await fetch('/poc/api/v1/chats/mood', {
+    // Calling the API with emotional + session_id in query string as requested
+    const url = `/poc/api/v1/chats/mood?emotional=${encodeURIComponent(mood)}&session_id=${encodeURIComponent(sessionId)}`;
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': state.apiKey
       },
-      body: JSON.stringify({ messageId, mood })
+      body: JSON.stringify({ messageId, mood, sessionId })
     });
     const data = await res.json();
     
     if (res.ok) {
       showToast('บันทึกอารมณ์สำเร็จจ้า! ☁️✨');
-      
       // Re-sync chat messages locally to show selection state locked
       await loadChatHistory();
+    } else {
+      showToast(data.error || 'Failed to submit mood.');
+      await loadChatHistory();
+    }
+  } catch (err) {
+    showToast('Error sending mood selection.');
+    console.error(err);
+    await loadChatHistory();
+  }
+}
+
+// Submit daily mood from the landing screen
+async function submitLandingMood(mood) {
+  if (!state.apiKey) return;
+  const mockMessageId = 'landing-' + Date.now();
+  const sessionId = mockMessageId;
+
+  try {
+    const url = `/poc/api/v1/chats/mood?emotional=${encodeURIComponent(mood)}&session_id=${encodeURIComponent(sessionId)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': state.apiKey
+      },
+      body: JSON.stringify({ messageId: mockMessageId, mood })
+    });
+    const data = await res.json();
+    
+    if (res.ok) {
+      showToast('บันทึกอารมณ์ของคุณสำเร็จแล้วจ้า! ☁️✨');
     } else {
       showToast(data.error || 'Failed to submit mood.');
     }
@@ -774,6 +814,15 @@ async function triggerCloudyAction(action) {
 
   if (action === 'schedule') {
     openScheduleModal();
+    return;
+  }
+
+  if (action === 'todo') {
+    openTodoModal();
+    return;
+  }
+
+  if (action === 'fortune-telling') {
     return;
   }
   
@@ -1466,6 +1515,262 @@ async function submitScheduleForm() {
   }
 }
 
+// ── Todo Modal ──────────────────────────────────────────────
+
+function openTodoModal() {
+  const modal = document.getElementById('todo-modal');
+  const sheet = document.getElementById('todo-sheet');
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const timeEl = document.getElementById('todo-modal-time');
+  if (timeEl) timeEl.innerText = `Today • ${timeStr}`;
+
+  // Reset to 1 empty item
+  const listContainer = document.getElementById('todo-items-list');
+  if (listContainer) {
+    listContainer.innerHTML = '';
+  }
+  addTodoItemRow('');
+  onTodoFormChanged();
+
+  if (modal) modal.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (modal) modal.style.opacity = '1';
+      if (sheet) {
+        sheet.classList.remove('translate-y-full');
+        sheet.classList.add('translate-y-0');
+      }
+    });
+  });
+}
+
+function closeTodoModal() {
+  const modal = document.getElementById('todo-modal');
+  const sheet = document.getElementById('todo-sheet');
+  if (sheet) {
+    sheet.classList.remove('translate-y-0');
+    sheet.classList.add('translate-y-full');
+  }
+  setTimeout(() => {
+    if (modal) {
+      modal.style.opacity = '0';
+      modal.classList.add('hidden');
+    }
+  }, 300);
+}
+
+function addTodoItemRow(value = '') {
+  const listContainer = document.getElementById('todo-items-list');
+  if (!listContainer) return;
+
+  const index = listContainer.children.length;
+  const row = document.createElement('div');
+  row.className = 'todo-item-row bg-[#1d1b26] border border-white/5 rounded-2xl p-3 flex items-center justify-between shadow-inner transition-all flex-shrink-0';
+  
+  row.innerHTML = `
+    <div class="w-5 h-5 rounded-full border border-white/20 bg-transparent flex-shrink-0 cursor-pointer hover:border-brandCoral transition-colors flex items-center justify-center group" onclick="toggleTodoRowCheck(this)">
+      <div class="w-2.5 h-2.5 rounded-full bg-brandCoral scale-0 group-hover:scale-50 transition-transform duration-200"></div>
+    </div>
+    <input type="text" placeholder="Type your task..." value="${value}" 
+      oninput="onTodoInput(${index}, this)"
+      class="flex-1 bg-transparent border-none text-[14.5px] text-white focus:outline-none placeholder:text-white/25 ml-3" />
+    <div class="flex items-center gap-1.5 ml-2 flex-shrink-0">
+      <button onclick="moveTodoRowUp(this)" class="w-7 h-7 bg-white/5 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 active:scale-90 transition-all cursor-pointer">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+      </button>
+      <button onclick="moveTodoRowDown(this)" class="w-7 h-7 bg-white/5 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 active:scale-90 transition-all cursor-pointer">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <button onclick="deleteTodoRow(this)" class="w-7 h-7 bg-white/5 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 active:scale-90 transition-all cursor-pointer">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+    </div>
+  `;
+
+  listContainer.appendChild(row);
+  reindexTodoItems();
+}
+
+function toggleTodoRowCheck(btn) {
+  const innerDot = btn.querySelector('div');
+  const input = btn.parentElement.querySelector('input');
+  if (innerDot && input) {
+    const isChecked = innerDot.classList.contains('scale-100');
+    if (isChecked) {
+      innerDot.classList.remove('scale-100');
+      innerDot.classList.add('scale-0');
+      input.classList.remove('line-through', 'text-white/40');
+      input.classList.add('text-white');
+    } else {
+      innerDot.classList.remove('scale-0');
+      innerDot.classList.add('scale-100');
+      input.classList.add('line-through', 'text-white/40');
+      input.classList.remove('text-white');
+    }
+  }
+}
+
+function onTodoInput(index, el) {
+  const listContainer = document.getElementById('todo-items-list');
+  const items = listContainer.children;
+  const value = el.value;
+
+  // If we typed in the last item, automatically append a new one
+  if (index === items.length - 1 && value.trim() !== '') {
+    addTodoItemRow('');
+  }
+
+  // If we cleared the text in the second-to-last item, and the last item is empty, remove the last item
+  if (value.trim() === '' && index === items.length - 2) {
+    const lastItemInput = items[items.length - 1].querySelector('input');
+    if (lastItemInput && lastItemInput.value.trim() === '') {
+      items[items.length - 1].remove();
+      reindexTodoItems();
+    }
+  }
+
+  onTodoFormChanged();
+}
+
+function deleteTodoRow(btn) {
+  const row = btn.closest('.todo-item-row');
+  const listContainer = document.getElementById('todo-items-list');
+  if (row && listContainer) {
+    if (listContainer.children.length > 1) {
+      row.remove();
+      reindexTodoItems();
+    } else {
+      // Clear value if it's the last remaining row
+      const input = row.querySelector('input');
+      if (input) input.value = '';
+    }
+  }
+  onTodoFormChanged();
+}
+
+function moveTodoRowUp(btn) {
+  const row = btn.closest('.todo-item-row');
+  const previous = row.previousElementSibling;
+  if (previous) {
+    row.parentNode.insertBefore(row, previous);
+    reindexTodoItems();
+  }
+}
+
+function moveTodoRowDown(btn) {
+  const row = btn.closest('.todo-item-row');
+  const next = row.nextElementSibling;
+  if (next) {
+    row.parentNode.insertBefore(next, row);
+    reindexTodoItems();
+  }
+}
+
+function reindexTodoItems() {
+  const listContainer = document.getElementById('todo-items-list');
+  if (!listContainer) return;
+  Array.from(listContainer.children).forEach((row, idx) => {
+    const input = row.querySelector('input');
+    if (input) {
+      input.setAttribute('oninput', `onTodoInput(${idx}, this)`);
+    }
+  });
+}
+
+function onTodoFormChanged() {
+  const listContainer = document.getElementById('todo-items-list');
+  const btn = document.getElementById('todo-save-btn');
+  if (!listContainer || !btn) return;
+
+  // Find if there is at least one non-empty task
+  const inputs = listContainer.querySelectorAll('input');
+  let hasValidTask = false;
+  inputs.forEach(input => {
+    if (input.value.trim() !== '') {
+      hasValidTask = true;
+    }
+  });
+
+  if (hasValidTask) {
+    btn.disabled = false;
+    btn.classList.remove('bg-[#221f2f]', 'text-white/30', 'cursor-not-allowed');
+    btn.classList.add('bg-gradient-to-br', 'from-[#ff6b4a]', 'to-[#e8431e]', 'text-white', 'cursor-pointer', 'active:scale-[0.98]');
+  } else {
+    btn.disabled = true;
+    btn.classList.remove('bg-gradient-to-br', 'from-[#ff6b4a]', 'to-[#e8431e]', 'text-white', 'cursor-pointer', 'active:scale-[0.98]');
+    btn.classList.add('bg-[#221f2f]', 'text-white/30', 'cursor-not-allowed');
+  }
+}
+
+async function submitTodoForm() {
+  const listContainer = document.getElementById('todo-items-list');
+  if (!listContainer || !state.apiKey) return;
+
+  const inputs = listContainer.querySelectorAll('input');
+  const tasks = [];
+  inputs.forEach(input => {
+    const text = input.value.trim();
+    if (text) {
+      tasks.push(text);
+    }
+  });
+
+  if (tasks.length === 0) return;
+
+  const btn = document.getElementById('todo-save-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Saving...';
+  }
+
+  const prompt = `เพิ่มรายการสิ่งที่ต้องทำ:\n` + tasks.map(t => `- ${t}`).join('\n');
+
+  closeTodoModal();
+
+  document.getElementById('chat-empty-state').classList.add('hidden');
+  appendMessageBubble({
+    id: 'todo-msg-' + Date.now(),
+    sender_id: state.username,
+    content: [{ type: 'text', text: prompt }],
+    created_at: new Date().toISOString()
+  });
+  scrollChatToBottom();
+
+  try {
+    state.isThinking = true;
+    toggleThinkingIndicator(true);
+
+    const res = await fetch('/poc/api/v1/chats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': state.apiKey },
+      body: JSON.stringify({ content: [{ type: 'text', text: prompt }] })
+    });
+
+    if (!res.ok) {
+      showToast('Failed to save todo list.');
+    } else {
+      await streamAgentResponse();
+    }
+  } catch (err) {
+    showToast('Error saving todo list.');
+    console.error(err);
+    toggleThinkingIndicator(false);
+    state.isThinking = false;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = 'Save Todo List';
+    }
+    onTodoFormChanged();
+  }
+}
+
+function addTodoItem() {
+  addTodoItemRow('');
+}
+
 function getOrCreateChatBubbleState(messageId) {
   let currentBubble = state.chats.find(c => c.id === messageId);
   if (!currentBubble) {
@@ -1703,6 +2008,7 @@ window.triggerCloudyAction = triggerCloudyAction;
 window.handleChatSubmit = handleChatSubmit;
 window.quickFillInput = quickFillInput;
 window.submitUserMood = submitUserMood;
+window.submitLandingMood = submitLandingMood;
 window.handleDeepLinkClick = handleDeepLinkClick;
 window.openCreditModal = openCreditModal;
 window.closeCreditModal = closeCreditModal;
@@ -1720,4 +2026,188 @@ window.openScheduleModal = openScheduleModal;
 window.closeScheduleModal = closeScheduleModal;
 window.onScheduleInputChanged = onScheduleInputChanged;
 window.submitScheduleForm = submitScheduleForm;
+window.openTodoModal = openTodoModal;
+window.closeTodoModal = closeTodoModal;
+window.addTodoItem = addTodoItem;
+window.submitTodoForm = submitTodoForm;
+
+// Personal Chat Room Utilities (Styled exactly like provided photo reference)
+function openRoomChatScreen(name, avatar) {
+  const roomPanel = document.getElementById('room-chat-view');
+  if (!roomPanel) return;
+
+  // Slide screen in
+  roomPanel.classList.remove('translate-x-full');
+  roomPanel.classList.add('translate-x-0');
+
+  // Update Title (Trimming name to fit the pill)
+  const titleEl = document.getElementById('room-chat-title');
+  if (titleEl) {
+    titleEl.innerText = name.length > 12 ? name.substring(0, 11) + '..' : name;
+  }
+
+  // Populate Messages Area with exact reference design layout
+  const messagesContainer = document.getElementById('room-chat-messages-container');
+  if (!messagesContainer) return;
+
+  const mockAvatar = avatar || 'https://images.unsplash.com/photo-1581291518655-9523c932ded7?w=150&auto=format&fit=crop';
+
+  messagesContainer.innerHTML = `
+    <!-- Message 1: Sent (User) -->
+    <div class="flex flex-col items-end gap-1 w-full max-w-[82%] ml-auto mt-4">
+      <div class="w-full relative flex flex-col items-end">
+        <div class="bg-gradient-to-br from-[#ffe5d9] to-[#ffd2be] text-[#2c1d18] rounded-[24px] rounded-tr-[4px] p-4 text-[14.5px] font-medium shadow-md leading-relaxed break-words relative flex flex-col gap-2">
+          <!-- Speaker Icon at top left of bubble -->
+          <div class="absolute -top-2.5 -left-2.5 w-6 h-6 rounded-full bg-[#f97050] flex items-center justify-center shadow-sm">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/></svg>
+          </div>
+          <span>Hello, How are you doing?</span>
+          <!-- Translate helper below text -->
+          <div class="flex items-center gap-1.5 text-[11px] text-[#f97050]/80 font-bold border-t border-[#f97050]/15 pt-1.5 cursor-pointer mt-1">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-2-2h-5L11 3H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"/><path d="M12 9l-3 3 3 3M9 12h7"/></svg>
+            <span>Translate by AI</span>
+          </div>
+        </div>
+      </div>
+      <span class="text-[10px] text-white/35 px-1 mt-0.5 select-none">Read 12:15</span>
+    </div>
+
+    <!-- Message 2: Received (Contact) -->
+    <div class="flex gap-3.5 items-start w-full max-w-[85%] mr-auto">
+      <div class="w-[42px] h-[42px] rounded-full overflow-hidden flex-shrink-0 bg-white/10 border border-white/10 mt-1">
+        <img src="${mockAvatar}" alt="Avatar" class="w-full h-full object-cover">
+      </div>
+      <div class="flex-1 flex flex-col gap-1.5">
+        <div class="relative w-full">
+          <div class="bg-[#18161b] border border-white/5 text-white/90 rounded-[24px] rounded-tl-[4px] p-4 text-[14.5px] font-medium shadow-md leading-relaxed break-words flex flex-col relative">
+            <div class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-[#2a2733] border border-white/10 flex items-center justify-center shadow-sm">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/></svg>
+            </div>
+            <span>Great, Just listening to my favorite album!</span>
+          </div>
+          <span class="absolute bottom-1 -right-12 text-[10px] text-white/35 select-none">12:17</span>
+        </div>
+        
+        <!-- Action Badges -->
+        <div class="flex gap-2 select-none">
+          <div class="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1b1922] border border-[#f97050]/20 text-[10px] font-bold text-[#f97050]">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span>AI</span>
+          </div>
+          <div class="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1b1922] border border-white/5 text-[10px] font-bold text-white/50 hover:text-white/80 transition-colors">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-2-2h-5L11 3H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"/><path d="M12 9l-3 3 3 3M9 12h7"/></svg>
+            <span>Translate</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Message 3: Received (Contact with Translation) -->
+    <div class="flex gap-3.5 items-start w-full max-w-[85%] mr-auto">
+      <div class="w-[42px] h-[42px] rounded-full overflow-hidden flex-shrink-0 bg-white/10 border border-white/10 mt-1">
+        <img src="${mockAvatar}" alt="Avatar" class="w-full h-full object-cover">
+      </div>
+      <div class="flex-1 flex flex-col gap-1.5">
+        <div class="relative w-full">
+          <div class="bg-[#18161b] border border-white/5 text-white/90 rounded-[24px] rounded-tl-[4px] p-4 text-[14.5px] font-medium shadow-md leading-relaxed break-words flex flex-col relative">
+            <div class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-[#2a2733] border border-white/10 flex items-center justify-center shadow-sm">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/></svg>
+            </div>
+            <span>Sound Great!, What- kind of book you read?</span>
+            <div class="border-t border-white/5 mt-3 pt-3 flex flex-col gap-1.5">
+              <div class="text-[13.5px] text-white/60 leading-relaxed">สวัสดีครับ อเล็กซ์ ใช่ครับ ผมได้ใช้แล้ว! มันเจ๋งมากเลยใช่ไหม? ผมชอบที่มันจัดหน้าจอหลักของผมให้อัตโนมัติ</div>
+              <div class="flex items-center gap-1.5 text-[10px] text-white/45 font-bold uppercase tracking-wider mt-1">
+                <div class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/></svg>
+                </div>
+                <span>Speech to text</span>
+              </div>
+            </div>
+          </div>
+          <span class="absolute bottom-1 -right-12 text-[10px] text-white/35 select-none">12:17</span>
+        </div>
+        
+        <!-- Action Badges -->
+        <div class="flex gap-2 select-none">
+          <div class="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1b1922] border border-[#f97050]/20 text-[10px] font-bold text-[#f97050]">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span>AI</span>
+          </div>
+          <div class="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1b1922] border border-white/5 text-[10px] font-bold text-white/50 hover:text-white/80 transition-colors">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-2-2h-5L11 3H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"/><path d="M12 9l-3 3 3 3M9 12h7"/></svg>
+            <span>Translate</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Message 4: Sent (User) -->
+    <div class="flex flex-col items-end gap-1 w-full max-w-[82%] ml-auto">
+      <div class="w-full relative flex flex-col items-end">
+        <div class="bg-gradient-to-br from-[#ffe5d9] to-[#ffd2be] text-[#2c1d18] rounded-[24px] rounded-tr-[4px] p-4 text-[14.5px] font-medium shadow-md leading-relaxed break-words relative flex flex-col gap-2">
+          <div class="absolute -top-2.5 -left-2.5 w-6 h-6 rounded-full bg-[#f97050] flex items-center justify-center shadow-sm">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/></svg>
+          </div>
+          <span>Nice! I'm not much of a music fan myself, but I do love to read</span>
+          <div class="flex items-center gap-1.5 text-[11px] text-[#f97050]/80 font-bold border-t border-[#f97050]/15 pt-1.5 cursor-pointer mt-1">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-2-2h-5L11 3H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"/><path d="M12 9l-3 3 3 3M9 12h7"/></svg>
+            <span>Translate by AI</span>
+          </div>
+        </div>
+      </div>
+      <span class="text-[10px] text-white/35 px-1 mt-0.5 select-none">Read 12:15</span>
+    </div>
+
+    <!-- Message 5: Received (Contact with Translation) -->
+    <div class="flex gap-3.5 items-start w-full max-w-[85%] mr-auto">
+      <div class="w-[42px] h-[42px] rounded-full overflow-hidden flex-shrink-0 bg-white/10 border border-white/10 mt-1">
+        <img src="${mockAvatar}" alt="Avatar" class="w-full h-full object-cover">
+      </div>
+      <div class="flex-1 flex flex-col gap-1.5">
+        <div class="relative w-full">
+          <div class="bg-[#18161b] border border-white/5 text-white/90 rounded-[24px] rounded-tl-[4px] p-4 text-[14.5px] font-medium shadow-md leading-relaxed break-words flex flex-col relative">
+            <div class="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-[#2a2733] border border-white/10 flex items-center justify-center shadow-sm">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/></svg>
+            </div>
+            <span>Sound Great!, What- kind of book you read?</span>
+            <div class="border-t border-white/5 mt-3 pt-3 flex flex-col gap-1.5">
+              <div class="text-[13.5px] text-white/60 leading-relaxed">สวัสดีครับ อเล็กซ์ ใช่ครับ ผมได้ใช้แล้ว! มันเจ๋งมากเลยใช่ไหม? ผมชอบที่มันจัดหน้าจอหลักของผมให้อัตโนมัติ</div>
+              <div class="flex items-center gap-1.5 text-[10px] text-white/45 font-bold uppercase tracking-wider mt-1">
+                <div class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/></svg>
+                </div>
+                <span>Speech to text</span>
+              </div>
+            </div>
+          </div>
+          <span class="absolute bottom-1 -right-12 text-[10px] text-white/35 select-none">12:17</span>
+        </div>
+        
+        <!-- Action Badges -->
+        <div class="flex gap-2 select-none">
+          <div class="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1b1922] border border-[#f97050]/20 text-[10px] font-bold text-[#f97050]">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span>AI</span>
+          </div>
+          <div class="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1b1922] border border-white/5 text-[10px] font-bold text-white/50 hover:text-white/80 transition-colors">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-2-2h-5L11 3H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"/><path d="M12 9l-3 3 3 3M9 12h7"/></svg>
+            <span>Translate</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function closeRoomChatScreen() {
+  const roomPanel = document.getElementById('room-chat-view');
+  if (roomPanel) {
+    roomPanel.classList.remove('translate-x-0');
+    roomPanel.classList.add('translate-x-full');
+  }
+}
+
+window.openRoomChatScreen = openRoomChatScreen;
+window.closeRoomChatScreen = closeRoomChatScreen;
+
 

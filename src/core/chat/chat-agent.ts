@@ -6,7 +6,7 @@ import { AIService } from '#/common/services/ai.service'
 import { getLocalTime, getUtcTime } from '#/common/utils/datetime.util'
 import { parseQueryInput, mapInputToOpenAIContent, mapParametersToOpenAI } from '~/src/core/chat/chat-mapper'
 import { envVariables } from '#/factory'
-import { AGENT_SYSTEM_INSTRUCTION, DEFAULT_PERSONA } from '#/common/constants/chat.constant'
+import { AGENT_SYSTEM_INSTRUCTION, DEFAULT_PERSONA, CLASSIFIER_SYSTEM_INSTRUCTION_TEMPLATE } from '#/common/constants/chat.constant'
 
 import type {
   IChatContext,
@@ -125,7 +125,7 @@ export class ChatAgent {
 
     // 1. Run intent classification
     const classification = await this.classifyIntent(combinedMessage)
-    const dynamicInstruction = await this.getDynamicInstruction()
+    const dynamicInstruction = await this.getDynamicInstruction(context)
 
     // 2. Direct Tool Routing (Deterministic execution bypass)
     if (classification.type === 'direct_tool' && classification.toolName && classification.args) {
@@ -169,22 +169,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       })
       .join('\n\n')
 
-    const systemInstruction = `You are a high-speed intent classifier and parameter extractor.
-Analyze the user's message and classify it into one of these three types:
-1. 'direct_tool': If the user's message is a simple direct request to run one of these available tools:
-   ${toolsDescription}
-
-   If 'direct_tool', you MUST also extract the required parameters according to their JSON schema.
-
-2. 'general_chat': General conversation, greetings, asking who you are, or general knowledge that does NOT require running any database tools.
-3. 'complex_agent': Complex reasoning, multi-step tasks, or highly ambiguous requests.
-
-Respond ONLY with a JSON object in the following format:
-{
-  "type": "direct_tool" | "general_chat" | "complex_agent",
-  "toolName": "tool_name", // only include if type is 'direct_tool'
-  "args": { ... } // extracted arguments mapped to the tool parameters, only include if type is 'direct_tool'
-}`
+    const systemInstruction = CLASSIFIER_SYSTEM_INSTRUCTION_TEMPLATE.replace('{{TOOLS_DESCRIPTION}}', toolsDescription)
 
     try {
       const jsonText = await this.callIntentClassifierLLM(systemInstruction, message)
@@ -235,13 +220,67 @@ Respond ONLY with a JSON object in the following format:
   ): Promise<IChatAgentResult> {
     const { responsePayload, cost } = await this.runToolCall({ name: toolName, args }, context, thinkCallback)
 
-    const { responseText, inputTokens, outputTokens } = await this.generateDirectToolConfirmation(
+    let responseText = ''
+    const directReturnTools = ['manage_expenses', 'create_schedule', 'manage_todos']
+    if (directReturnTools.includes(toolName)) {
+      const payloadStr = typeof responsePayload === 'string' ? responsePayload : JSON.stringify(responsePayload)
+      responseText = payloadStr
+      try {
+        const parsed = JSON.parse(payloadStr)
+        if (parsed && parsed.message) {
+          responseText = parsed.message
+        }
+      } catch {}
+
+      const grandTotalTokens = 0
+      const totalCreditsUsed = cost
+
+      this.history.push({ role: 'user', parts: [{ text: combinedMessage }] })
+      this.history.push({ role: 'model', parts: [{ text: responseText }] })
+
+      if (this.persistHistory) {
+        await this.saveConversationTurn(combinedMessage, responseText, {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          llmCredits: 0,
+          toolCredits: cost,
+          creditsUsed: totalCreditsUsed,
+          tools: this.executedTools,
+        })
+      }
+
+      const metadata: IChatAgentMetadata = {
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        grandTotalTokens: 0,
+        toolUsageCount: 1,
+        totalCreditsUsed,
+        remainingCredits: this.remainingCredits ?? 0,
+      }
+
+      if (thinkCallback) {
+        await thinkCallback({
+          status: 'done',
+          response: responseText,
+          metadata,
+        })
+      }
+
+      return {
+        response: responseText,
+        metadata,
+      }
+    }
+
+    const { responseText: confirmedText, inputTokens, outputTokens } = await this.generateDirectToolConfirmation(
       toolName,
       responsePayload,
       combinedMessage,
       parts,
       dynamicInstruction,
     )
+    responseText = confirmedText
 
     const grandTotalTokens = inputTokens + outputTokens
     const llmCredits = grandTotalTokens / this.tokensPerCredit
@@ -449,10 +488,56 @@ Respond ONLY with a JSON object in the following format:
         tool_calls: toolCalls,
       })
 
+      const directReturnTools = ['manage_expenses', 'create_schedule', 'manage_todos']
+      const hasDirectTool = toolCalls.some(call => call.type === 'function' && call.function?.name && directReturnTools.includes(call.function.name))
+
       const stepResult = await this.executeOpenAIToolStep(toolCalls, openaiMessages, context, thinkCallback)
       toolUsageCount += stepResult.usageCount
       toolCredits += stepResult.credits
       this.endToolExecutionStep()
+
+      if (hasDirectTool) {
+        // Find the last tool message added to openaiMessages
+        const toolMsg = openaiMessages.slice().reverse().find(msg => msg.role === 'tool')
+        let payloadText = ''
+        if (toolMsg && toolMsg.content) {
+          if (typeof toolMsg.content === 'string') {
+            payloadText = toolMsg.content
+          } else if (Array.isArray(toolMsg.content)) {
+            payloadText = toolMsg.content.map(part => 'text' in part ? part.text : '').join('')
+          }
+        }
+        let responseText = payloadText
+        try {
+          const parsed = JSON.parse(payloadText)
+          if (parsed && parsed.message) responseText = parsed.message
+        } catch {}
+
+        // Mock a final OpenAI completion response
+        const mockResponse = {
+          id: response.id,
+          object: 'chat.completion',
+          created: response.created,
+          model: response.model,
+          choices: [{
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: responseText
+            },
+            finish_reason: 'stop'
+          }],
+          usage: response.usage
+        } as unknown as OpenAI.Chat.Completions.ChatCompletion
+        
+        return {
+          finalResponse: mockResponse,
+          toolUsageCount,
+          toolCredits,
+          totalInputTokens,
+          totalOutputTokens,
+        }
+      }
 
       response = await this.openai!.chat.completions.create({
         model: envVariables.OPENAI_CHAT_MODEL,
@@ -594,6 +679,9 @@ Respond ONLY with a JSON object in the following format:
       this.startNewToolExecutionStep()
       const functionCallParts = (modelContent.parts || []).filter((part: Part) => !!part.functionCall)
 
+      const directReturnTools = ['manage_expenses', 'create_schedule', 'manage_todos']
+      const hasDirectTool = functionCallParts.some(part => part.functionCall?.name && directReturnTools.includes(part.functionCall.name))
+
       const { toolResponseParts, usageCount, credits } = await this.processToolCalls(
         functionCallParts,
         context,
@@ -602,6 +690,43 @@ Respond ONLY with a JSON object in the following format:
       toolUsageCount += usageCount
       toolCredits += credits
       this.endToolExecutionStep()
+
+      if (hasDirectTool) {
+        // Find the first executed direct tool response
+        const directPart = toolResponseParts.find(part => part.functionResponse?.name && directReturnTools.includes(part.functionResponse.name))
+        const rawResponse = directPart?.functionResponse?.response as any
+        let responseText = ''
+        if (rawResponse) {
+          if (typeof rawResponse === 'string') {
+            responseText = rawResponse
+            try {
+              const parsed = JSON.parse(rawResponse)
+              if (parsed && parsed.message) responseText = parsed.message
+            } catch {}
+          } else if (rawResponse.message) {
+            responseText = rawResponse.message
+          } else {
+            responseText = JSON.stringify(rawResponse)
+          }
+        }
+        
+        // Mock a final response to complete immediately
+        const mockResponse = {
+          candidates: [{
+            content: {
+              role: 'model',
+              parts: [{ text: responseText }]
+            }
+          }]
+        } as unknown as GenerateContentResponse
+        return {
+          finalResponse: mockResponse,
+          toolUsageCount,
+          toolCredits,
+          totalInputTokens,
+          totalOutputTokens,
+        }
+      }
 
       contents.push(modelContent)
       contents.push({
@@ -1082,14 +1207,40 @@ Respond ONLY with a JSON object in the following format:
     ]
   }
 
-  private async getDynamicInstruction(): Promise<string> {
+  private async getDynamicInstruction(context?: IChatContext): Promise<string> {
     const nowStr = getLocalTime().format('YYYY-MM-DDTHH:mm:ssZ')
     let memoriesText = ''
     if (this.persistMemory) {
       memoriesText = await this.loadMemoriesFromFirestore()
     }
-    // Compose: Persona → System Instruction → Memories → Current Time
-    return `${this.persona}\n\n${this.systemInstruction}${memoriesText} Current Thai local time is ${nowStr}.`
+
+    // Dynamic User Profile Injection
+    let userProfileText = ''
+    try {
+      const userDoc = await db.collection('users').doc(this.userId).get()
+      if (userDoc.exists) {
+        const userData = userDoc.data()
+        const username = userData?.username || 'คุณปี๊บ'
+        userProfileText = `\n\nUser Profile Information:\n- User ID: ${this.userId}\n- Username: ${username}\n- Always address the user as "คุณ ${username}" in Thai responses.`
+      }
+    } catch (e) {
+      logger.warn(e, 'Failed to fetch user profile for dynamic instruction injection')
+    }
+
+    // Dynamic Task-specific Skill Guideline Injection
+    let taskSkillsText = ''
+    if (this.tasks && this.tasks.length > 0) {
+      const activeSkills = this.tasks
+        .filter((t) => t.skill && t.skillInstruction)
+        .map((t) => `[Skill: ${t.skill}] - Instruction Rule: ${t.skillInstruction}${context?.metadata?.[t.skill!] ? ` (Detected ${t.skill} context value: "${context.metadata[t.skill!]}")` : ''}`)
+        .join('\n')
+      if (activeSkills) {
+        taskSkillsText = `\n\nActive Task Skills Guidelines:\n${activeSkills}`
+      }
+    }
+
+    // Compose: Persona → System Instruction → User Profile → Memories → Active Task Skills → Current Time
+    return `${this.persona}\n\n${this.systemInstruction}${userProfileText}${memoriesText}${taskSkillsText}\n\nCurrent Thai local time is ${nowStr}.`
   }
 
   private hasFunctionCalls(response: GenerateContentResponse): boolean {

@@ -211,6 +211,42 @@ export class ChatController {
     const body = c.req.valid('json')
     const { messageId, mood } = body
 
+    const dateStr = getLocalTime().format('YYYY-MM-DD')
+    const now = getUtcTime().toDate()
+
+    // 1. If it's a landing page direct update
+    if (messageId && messageId.startsWith('landing')) {
+      // Validate duplicates for today
+      const existingQuery = await db.collection('user_moods')
+        .where('user_id', '==', userId)
+        .where('date', '==', dateStr)
+        .limit(1)
+        .get()
+
+      if (!existingQuery.empty) {
+        return c.json({ error: 'วันนี้คุณได้บันทึกอารมณ์ไปแล้วจ้า! ☁️✨' }, 400)
+      }
+
+      // Add to user_moods directly
+      const moodDocRef = db.collection('user_moods').doc()
+      await moodDocRef.set({
+        uuid: moodDocRef.id,
+        user_id: userId,
+        mood,
+        note: 'บันทึกอารมณ์ผ่านหน้าแรกประจำวันจ้า ☁️✨',
+        date: dateStr,
+        created_at: now,
+      })
+
+      return c.json<TSuccessResponse>(
+        successResponseSchema.parse({
+          success: true,
+          message: 'อัปเดตอารมณ์เรียบร้อยแล้วจ้า!',
+        }),
+      )
+    }
+
+    // 2. Normal flow for chat message bubble mood card
     const docRef = db.collection('chats').doc(messageId)
     const doc = await docRef.get()
 
@@ -248,8 +284,6 @@ export class ChatController {
       message: JSON.stringify(parsed),
     })
 
-    const dateStr = getLocalTime().format('YYYY-MM-DD')
-    const now = getUtcTime().toDate()
     const moodDocRef = db.collection('user_moods').doc()
     await moodDocRef.set({
       uuid: moodDocRef.id,

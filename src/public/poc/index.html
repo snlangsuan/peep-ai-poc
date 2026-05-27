@@ -65,117 +65,194 @@
           </div>
         </div>
 
-        <!-- Glowing AI Assistant Premium Card -->
-        <div onclick="openChatScreen()" class="relative bg-[#140e23]/60 backdrop-blur-xl rounded-[26px] p-[18px_20px] flex items-center justify-between gap-3.5 mb-7 cursor-pointer transition-all duration-300 border border-white/5 hover:scale-[1.02] hover:bg-white/5 hover:shadow-[0_12px_35px_rgba(230,75,45,0.15)] hover:border-white/15">
-          <!-- Dual Glowing Borders in CSS inside Tailwind -->
-          <div class="absolute inset-0 rounded-[26px] p-[1.5px] bg-gradient-to-br from-brandCoral/50 to-brandPurple/50 [mask-image:linear-gradient(#fff_0_0)_content-box,linear-gradient(#fff_0_0)] [mask-composite:exclude] -z-10 pointer-events-none"></div>
-
+        <!-- Premium AI Assistant Card (Styled like reference image) -->
+        <div onclick="openChatScreen()" class="relative bg-[#2e2b35]/60 border border-[#f97050]/35 backdrop-blur-xl rounded-[28px] p-[16px_20px] flex items-center justify-between gap-3.5 mb-7 cursor-pointer transition-all duration-300 hover:scale-[1.01] hover:bg-[#2e2b35]/80 hover:shadow-[0_10px_30px_rgba(249,112,80,0.12)]">
+          
           <!-- Restored Cloudy Brand Mascot Avatar -->
-          <div class="w-[52px] h-[52px] rounded-full overflow-hidden border border-white/10 bg-[#f97050] flex-shrink-0 relative shadow-[0_4px_15px_rgba(249,112,80,0.35)] flex items-center justify-center">
+          <div class="w-[54px] h-[54px] rounded-full overflow-hidden border border-white/10 bg-[#f97050] flex-shrink-0 relative shadow-[0_4px_12px_rgba(249,112,80,0.3)] flex items-center justify-center">
             <img src="/poc/cloudy.png" alt="Cloudy" class="w-full h-full object-cover object-center scale-110">
             <!-- Online status dot -->
-            <span class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-panelBg pulse-indicator"></span>
+            <span class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-[#13111c] pulse-indicator"></span>
           </div>
           <div class="flex-1 flex flex-col gap-0.5 min-w-0">
-            <span class="text-lg font-semibold text-white">AI assistant (Cloudy) ☁️</span>
-            <span id="dashboard-cloudy-snippet" class="text-[14px] text-white/60 truncate">สวัสดีจ้า! วันนี้ให้คลาวดี้ช่วยดูแลงานตรงไหนดีจ้า? ☁️✨</span>
+            <span class="text-[17px] font-bold text-white tracking-wide">AI assistant (Cloudy) ☁️</span>
+            <span id="dashboard-cloudy-snippet" class="text-[14.5px] text-white/60 truncate">Hey there! 👋 Hope your afternoon is going well...</span>
           </div>
           <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
-            <span class="text-[12.5px] text-white/50">now</span>
-            <div id="credit-badge" class="min-w-[22px] h-[22px] rounded-full bg-brandCoral text-white text-[11px] font-bold flex justify-center items-center px-1.5 shadow-[0_3px_8px_rgba(232,92,65,0.35)]" title="Credits Left">…</div>
+            <span class="text-[12px] text-white/40 font-medium">now</span>
+            <div id="credit-badge" class="min-w-[21px] h-[21px] rounded-full bg-[#f97050] text-white text-[11px] font-bold flex justify-center items-center px-1.5 shadow-[0_3px_8px_rgba(249,112,80,0.3)]" title="Credits Left">2</div>
           </div>
         </div>
 
         <!-- Messages Header -->
-        <div class="text-[15px] font-medium text-white/45 mb-4.5 tracking-wide select-none">All Messages</div>
+        <div class="text-[15px] font-semibold text-white/40 mb-5 tracking-wider uppercase select-none">All Messages</div>
 
         <!-- Conversations chat list -->
-        <div class="flex flex-col gap-5">
+        <div class="flex flex-col gap-6">
 
           <!-- Item 1: PEEP Official -->
-          <div onclick="showToast('PEEP Official chat room is disabled in this mockup.')" class="flex items-center justify-between gap-3.5 cursor-pointer transition-all duration-200 hover:translate-x-1">
-            <div class="relative w-[54px] h-[54px] rounded-full flex-shrink-0 bg-brandOrange flex justify-center items-center shadow-[0_4px_12px_rgba(240,90,40,0.25)]">
-              <svg viewBox="0 0 100 100" fill="none" class="w-8 h-8">
-                <path d="M72 48c0-11-10-20-22-20s-22 9-22 20c0 8.3 5.7 15.5 13.8 18.5L40 73l8.6-4.3C49.1 68 49.6 68 50 68c12 0 22-9 22-20z" fill="#ffffff" />
-                <text x="50" y="52" fill="#f05a28" font-family="'Outfit', sans-serif" font-weight="800" font-size="11" text-anchor="middle" letter-spacing="0.1px">PEEP</text>
-              </svg>
+          <div onclick="openRoomChatScreen('PEEP Official', 'https://play-lh.googleusercontent.com/MgyY3HN5_-lOEdR5nUae_lbwGqs6cFBbFVye3WQq3ARXkiMsCkn8798TDBPYf1JYmrg=w300-h300-pc0xffffff-pd')" class="flex items-center justify-between gap-4 cursor-pointer transition-all duration-200 hover:translate-x-1 group py-1">
+            <div class="relative w-[54px] h-[54px] rounded-full overflow-hidden flex-shrink-0 bg-[#191428] border border-white/10">
+              <img src="https://play-lh.googleusercontent.com/MgyY3HN5_-lOEdR5nUae_lbwGqs6cFBbFVye3WQq3ARXkiMsCkn8798TDBPYf1JYmrg=w300-h300-pc0xffffff-pd" alt="PEEP Official" class="w-full h-full object-cover">
             </div>
-            <div class="flex-1 flex flex-col gap-1 min-w-0">
-              <span class="text-[17.5px] font-semibold text-white tracking-wide">PEEP Official</span>
-              <span class="text-[14.5px] text-white/50 truncate">รหัสลุ้นรับรางวัลประจำวันที่ 30 ธัน...</span>
+            <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+              <span class="text-[17px] font-semibold text-white tracking-wide group-hover:text-[#f97050] transition-colors">PEEP Official</span>
+              <span class="text-[14.5px] text-white/50 truncate block">รหัสลุ้นรับรางวัลประจำวันที่ 30 ธันวา ...</span>
             </div>
             <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
-              <span class="text-[13px] text-white/45">Yesterday</span>
-              <div class="min-w-[22px] h-[22px] rounded-full bg-brandCoral text-white text-xs font-semibold flex justify-center items-center px-1.5 shadow-[0_3px_8px_rgba(249,112,80,0.35)]">10</div>
+              <span class="text-[12.5px] text-white/40 font-medium">Yesterday</span>
+              <div class="min-w-[21px] h-[21px] rounded-full bg-[#f97050] text-white text-[11px] font-bold flex justify-center items-center px-1.5 shadow-[0_3px_8px_rgba(249,112,80,0.3)]">10</div>
             </div>
           </div>
 
           <!-- Item 2: UX/UI Team -->
-          <div onclick="showToast('UX/UI Team chat is disabled in this mockup.')" class="flex items-center justify-between gap-3.5 cursor-pointer transition-all duration-200 hover:translate-x-1">
-            <div class="relative w-[54px] h-[54px] rounded-full overflow-hidden flex-shrink-0 bg-[#191428]">
-              <img src="https://images.unsplash.com/photo-1581291518655-9523c932ded7?w=150&auto=format&fit=crop" alt="UX/UI Team" class="w-full h-full object-cover">
+          <div onclick="openRoomChatScreen('UX/UI Team', 'https://images.unsplash.com/photo-1602576666092-bf6447a729fc?q=80&w=150&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D')" class="flex items-center justify-between gap-4 cursor-pointer transition-all duration-200 hover:translate-x-1 group py-1">
+            <div class="relative w-[54px] h-[54px] rounded-full overflow-hidden flex-shrink-0 bg-[#191428] border border-white/10">
+              <img src="https://images.unsplash.com/photo-1602576666092-bf6447a729fc?q=80&w=150&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="UX/UI Team" class="w-full h-full object-cover">
             </div>
-            <div class="flex-1 flex flex-col gap-1 min-w-0">
-              <span class="text-[17.5px] font-semibold text-white tracking-wide">UX/UI Team (12)</span>
-              <span class="text-[14.5px] text-white/50 truncate">Hello</span>
+            <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+              <span class="text-[17px] font-semibold text-white tracking-wide group-hover:text-[#f97050] transition-colors">UX/UI Team (12)</span>
+              <span class="text-[14.5px] text-white/50 truncate block">Hello</span>
             </div>
             <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
-              <span class="text-[13px] text-white/45">Yesterday</span>
-              <div class="h-[22px] rounded-full bg-gradient-to-r from-brandCoral to-brandPurple text-white text-[11px] font-semibold flex justify-center items-center px-2.5 shadow-[0_4px_10px_rgba(168,60,232,0.3)]">999+</div>
+              <span class="text-[12.5px] text-white/40 font-medium">Yesterday</span>
+              <div class="h-[21px] rounded-full bg-[#f97050] text-white text-[10px] font-bold flex justify-center items-center px-2 shadow-[0_3px_8px_rgba(249,112,80,0.3)]">999+</div>
             </div>
           </div>
 
           <!-- Item 3: Amandeer -->
-          <div onclick="showToast('Amandeer chat is disabled in this mockup.')" class="flex items-center justify-between gap-3.5 cursor-pointer transition-all duration-200 hover:translate-x-1">
-            <div class="relative w-[54px] h-[54px] rounded-full overflow-hidden flex-shrink-0 bg-[#191428]">
+          <div onclick="openRoomChatScreen('Amandeer', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop')" class="flex items-center justify-between gap-4 cursor-pointer transition-all duration-200 hover:translate-x-1 group py-1">
+            <div class="relative w-[54px] h-[54px] rounded-full overflow-hidden flex-shrink-0 bg-[#191428] border border-white/10">
               <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop" alt="Amandeer" class="w-full h-full object-cover">
             </div>
-            <div class="flex-1 flex flex-col gap-1 min-w-0">
-              <span class="text-[17.5px] font-semibold text-white tracking-wide">Amandeer</span>
-              <span class="text-[14.5px] text-white/50 truncate">You sent a photo.</span>
+            <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+              <span class="text-[17px] font-semibold text-white tracking-wide group-hover:text-[#f97050] transition-colors">Amandeer</span>
+              <span class="text-[14.5px] text-white/50 truncate block">You sent a photo.</span>
             </div>
             <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
-              <span class="text-[13px] text-white/45">Wed, 14/01</span>
+              <span class="text-[12.5px] text-white/40 font-medium">Wed, 14/01</span>
+            </div>
+          </div>
+
+          <!-- Item 4: Johnathan -->
+          <div onclick="openRoomChatScreen('Johnathan', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop')" class="flex items-center justify-between gap-4 cursor-pointer transition-all duration-200 hover:translate-x-1 group py-1">
+            <div class="relative w-[54px] h-[54px] rounded-full overflow-hidden flex-shrink-0 bg-[#191428] border border-white/10">
+              <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop" alt="Johnathan" class="w-full h-full object-cover">
+            </div>
+            <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+              <span class="text-[17px] font-semibold text-white tracking-wide group-hover:text-[#f97050] transition-colors">Johnathan</span>
+              <span class="text-[14.5px] text-white/50 truncate block">Let's catch up soon!</span>
+            </div>
+            <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
+              <span class="text-[12.5px] text-white/40 font-medium">Wed, 14/01</span>
+            </div>
+          </div>
+
+          <!-- Item 5: Kenji -->
+          <div onclick="openRoomChatScreen('Kenji', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop')" class="flex items-center justify-between gap-4 cursor-pointer transition-all duration-200 hover:translate-x-1 group py-1">
+            <div class="relative w-[54px] h-[54px] rounded-full overflow-hidden flex-shrink-0 bg-[#191428] border border-white/10">
+              <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop" alt="Kenji" class="w-full h-full object-cover">
+            </div>
+            <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+              <span class="text-[17px] font-semibold text-white tracking-wide group-hover:text-[#f97050] transition-colors">Kenji</span>
+              <span class="text-[14.5px] text-white/50 truncate block">Received your message.</span>
+            </div>
+            <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
+              <span class="text-[12.5px] text-white/40 font-medium">Wed, 14/01</span>
+            </div>
+          </div>
+
+          <!-- Item 6: Mei Ling -->
+          <div onclick="openRoomChatScreen('Mei Ling', 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&auto=format&fit=crop')" class="flex items-center justify-between gap-4 cursor-pointer transition-all duration-200 hover:translate-x-1 group py-1">
+            <div class="relative w-[54px] h-[54px] rounded-full overflow-hidden flex-shrink-0 bg-[#191428] border border-white/10">
+              <img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&auto=format&fit=crop" alt="Mei Ling" class="w-full h-full object-cover">
+            </div>
+            <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+              <span class="text-[17px] font-semibold text-white tracking-wide group-hover:text-[#f97050] transition-colors">Mei Ling</span>
+              <span class="text-[14.5px] text-white/50 truncate block">Can we reschedule our call?</span>
+            </div>
+            <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
+              <span class="text-[12.5px] text-white/40 font-medium">Wed, 14/01</span>
+            </div>
+          </div>
+
+          <!-- Item 7: Alex -->
+          <div onclick="openRoomChatScreen('Alex', 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop')" class="flex items-center justify-between gap-4 cursor-pointer transition-all duration-200 hover:translate-x-1 group py-1">
+            <div class="relative w-[54px] h-[54px] rounded-full overflow-hidden flex-shrink-0 bg-[#191428] border border-white/10">
+              <img src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop" alt="Alex" class="w-full h-full object-cover">
+            </div>
+            <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+              <span class="text-[17px] font-semibold text-white tracking-wide group-hover:text-[#f97050] transition-colors">Alex</span>
+              <span class="text-[14.5px] text-white/50 truncate block">Received your message.</span>
+            </div>
+            <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
+              <span class="text-[12.5px] text-white/40 font-medium">Wed, 14/01</span>
             </div>
           </div>
 
         </div>
       </div>
 
-      <!-- Floating Sticky Navigation Bar -->
-      <div class="absolute bottom-6 left-4 right-4 h-[72px] bg-[#120c1e]/85 border border-white/5 rounded-[24px] backdrop-blur-3xl shadow-[0_10px_40px_rgba(0,0,0,0.4)] flex justify-around items-center px-2.5 z-20">
-        <!-- Home -->
-        <div onclick="showToast('Home page active 🏠')" class="flex flex-col items-center gap-1 text-white/45 font-medium text-[11.5px] cursor-pointer min-w-[58px] h-full justify-center transition-all duration-200 hover:text-white">
-          <svg viewBox="0 0 24 24" class="w-[22px] h-[22px] fill-current">
-            <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-          </svg>
-          <span>Home</span>
-        </div>
+      <!-- Floating Sticky Navigation Bar & Home Indicator -->
+      <div class="absolute bottom-4 left-4 right-4 z-20 flex flex-col items-center gap-3">
+        <!-- Main Menu Bar -->
+        <div class="w-full h-[76px] bg-gradient-to-b from-[#2e2d31]/95 to-[#1c1b1f]/95 border border-white/10 rounded-full shadow-[0_12px_36px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.12)] backdrop-blur-xl flex justify-around items-center px-4">
+          
+          <!-- Home -->
+          <div onclick="showToast('Home page active 🏠')" class="flex flex-col items-center gap-1 text-white/55 font-medium text-[11px] cursor-pointer min-w-[54px] h-full justify-center transition-all duration-200 hover:text-white">
+            <svg viewBox="0 0 24 24" class="w-[23px] h-[23px] fill-current">
+              <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+            </svg>
+            <span class="tracking-wide">Home</span>
+          </div>
 
-        <!-- Peeps (Active state) -->
-        <div class="relative text-brandCoral flex flex-col items-center gap-1 font-medium text-[11.5px] cursor-pointer min-w-[58px] h-full justify-center select-none">
-          <div class="absolute inset-y-2 inset-x-0.5 bg-brandCoral/10 rounded-2xl border border-brandCoral/15 -z-10"></div>
-          <svg viewBox="0 0 24 24" class="w-[22px] h-[22px] fill-current">
-            <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/>
-          </svg>
-          <span>Peeps</span>
-        </div>
+          <!-- Peeps (Active state) -->
+          <div class="relative flex flex-col items-center gap-1 font-medium text-[11px] cursor-pointer min-w-[76px] h-[52px] justify-center select-none bg-black/40 rounded-[22px] border border-white/5 shadow-inner text-[#f97050]">
+            <svg viewBox="0 0 24 24" class="w-[24px] h-[24px]">
+              <defs>
+                <linearGradient id="peepGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#ff8552" />
+                  <stop offset="100%" stop-color="#f3482a" />
+                </linearGradient>
+              </defs>
+              <path d="M20 2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4V4c0-1.1-.9-2-2-2z" fill="url(#peepGradient)" />
+              <circle cx="8" cy="10" r="1.5" fill="white" opacity="0.9" />
+              <circle cx="12" cy="10" r="1.5" fill="white" opacity="0.9" />
+              <circle cx="16" cy="10" r="1.5" fill="white" opacity="0.9" />
+            </svg>
+            <span class="tracking-wide font-semibold text-[#f97050]">Peeps</span>
+          </div>
 
-        <!-- Community -->
-        <div onclick="showToast('Community features coming soon! 👥')" class="flex flex-col items-center gap-1 text-white/45 font-medium text-[11.5px] cursor-pointer min-w-[58px] h-full justify-center transition-all duration-200 hover:text-white">
-          <svg viewBox="0 0 24 24" class="w-[22px] h-[22px] fill-current">
-            <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
-          </svg>
-          <span>Community</span>
-        </div>
+          <!-- Community -->
+          <div onclick="showToast('Community features coming soon! 👥')" class="flex flex-col items-center gap-1 text-white/55 font-medium text-[11px] cursor-pointer min-w-[54px] h-full justify-center transition-all duration-200 hover:text-white">
+            <svg viewBox="0 0 24 24" class="w-[23px] h-[23px] fill-current">
+              <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+            </svg>
+            <span class="tracking-wide">Community</span>
+          </div>
 
-        <!-- Settings icon triggering user profile & logout -->
-        <div onclick="openSettingsModal()" class="flex flex-col items-center gap-1 text-white/45 font-medium text-[11.5px] cursor-pointer min-w-[58px] h-full justify-center transition-all duration-200 hover:text-white">
-          <svg viewBox="0 0 24 24" class="w-[22px] h-[22px] fill-current">
-            <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/>
-          </svg>
-          <span>Settings</span>
+          <!-- My Cloud -->
+          <div onclick="showToast('My Cloud features coming soon! ☁️✨')" class="flex flex-col items-center gap-1 text-white/55 font-medium text-[11px] cursor-pointer min-w-[54px] h-full justify-center transition-all duration-200 hover:text-white">
+            <svg viewBox="0 0 24 24" class="w-[23px] h-[23px] fill-current">
+              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
+              <path d="M19 1l.7 1.6L21.3 3.3l-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7.7-1.6z" fill="#fff" />
+            </svg>
+            <span class="tracking-wide">My Cloud</span>
+          </div>
+
+          <!-- Setting -->
+          <div onclick="openSettingsModal()" class="flex flex-col items-center gap-1 text-white/55 font-medium text-[11px] cursor-pointer min-w-[54px] h-full justify-center transition-all duration-200 hover:text-white">
+            <svg viewBox="0 0 24 24" class="w-[23px] h-[23px] fill-current">
+              <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+              <path d="M22 20.5c-.2 0-.4-.1-.5-.2l-.6-.6c-.2.2-.5.3-.8.4l-.1.8c0 .3-.3.5-.6.5h-1c-.3 0-.5-.2-.6-.5l-.1-.5c-.3-.1-.6-.2-.8-.4l-.6.6c-.2.2-.5.2-.7 0l-.7-.7c-.2-.2-.2-.5 0-.7l.6-.6c-.2-.3-.3-.5-.4-.8l-.5-.1c-.3 0-.5-.3-.5-.6v-1c0-.3.2-.5.5-.6l.5-.1c.1-.3.2-.5.4-.8l-.6-.6c-.2-.2-.2-.5 0-.7l.7-.7c.2-.2.5-.2.7 0l.6.6c.3-.2.5-.3.8-.4l.1-.5c0-.3.3-.5.6-.5h1c.3 0 .5.2.6.5l.1.5c.3.1.6.2.8.4l.6-.6c.2-.2.5-.2.7 0l.7.7c.2.2.2.5 0 .7l-.6.6c.2.3.3.5.4.8l.5.1c.3 0 .5.3.5.6v1c0 .3-.2.5-.5.6l-.5.1c-.1.3-.2.5-.4.8l.6.6c.2.2.2.5 0 .7l-.7.7c-.1.1-.3.2-.5.2zm-2.5-2.2c.7 0 1.2-.5 1.2-1.2s-.5-1.2-1.2-1.2-1.2.5-1.2 1.2.5 1.2 1.2 1.2z"/>
+            </svg>
+            <span class="tracking-wide">Setting</span>
+          </div>
+
         </div>
+        
+        <!-- White Home Indicator Pill -->
+        <div class="w-[130px] h-[4.5px] bg-white/95 rounded-full shadow-[0_1px_4px_rgba(0,0,0,0.15)] opacity-85 pointer-events-none mt-1"></div>
       </div>
     </div>
 
@@ -185,7 +262,7 @@
       <!-- Chat Header -->
       <div class="h-16 border-b border-white/5 flex items-center px-4 justify-between select-none shrink-0">
         <div class="flex items-center gap-3">
-          <button onclick="closeChatScreen()" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 active:scale-95 transition-all text-xs font-semibold text-white/90">
+          <button onclick="closeChatScreen()" class="flex items-center justify-center gap-1 px-3 h-8 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 active:scale-95 transition-all text-xs font-semibold text-white/90">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="mr-0.5">
               <polyline points="15 18 9 12 15 6"></polyline>
             </svg>
@@ -195,7 +272,7 @@
 
         <div class="flex items-center gap-2">
           <!-- Live Credit Counter (keeps compatibility with requirements) -->
-          <div onclick="openCreditModal()" class="flex items-center gap-1.5 bg-[#181524] border border-white/5 rounded-full px-3 py-1.5 cursor-pointer transition-all duration-300 hover:bg-white/5 active:scale-95 shadow-sm" title="Buy Credits">
+          <div onclick="openCreditModal()" class="h-[32px] flex items-center gap-1.5 bg-[#181524] border border-white/5 rounded-full px-3 py-1.5 cursor-pointer transition-all duration-300 hover:bg-white/5 active:scale-95 shadow-sm" title="Buy Credits">
             <span class="text-[10px] text-white/40 uppercase font-bold tracking-wider">Credits:</span>
             <span id="chat-credits-counter" class="text-xs font-extrabold text-brandCoral flex items-center gap-0.5">
               <svg id="credits-loading-spinner" class="animate-spin" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
@@ -205,11 +282,9 @@
             </span>
           </div>
 
-          <!-- Quick Action Dropdown Trigger (circle button, no border, mdi-view-grid-outline icon) -->
-          <button onclick="toggleQuickMenu(event)" class="w-10 h-10 rounded-full flex justify-center items-center active:scale-95 transition-all text-white/60 hover:text-white bg-[#181524] border border-white/5 hover:bg-white/5" title="Quick Commands">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M3,3H11V11H3V3M5,5V9H9V5H5M3,13H11V21H3V13M5,15V19H9V15H5M13,3H21V11H13V3M15,5V9H19V5H15M13,13H21V21H13V13M15,15V19H19V15H15Z"/>
-            </svg>
+          <!-- Quick Action Dropdown Trigger (circle button, styled with brand orange theme) -->
+          <button onclick="toggleQuickMenu(event)" class="w-[32px] h-[32px] rounded-full flex justify-center items-center active:scale-95 transition-all border border-white/15 hover:bg-[#ffffff]/25" title="Quick Commands">
+            <img src="/poc/quick-menu.png" alt="quick-menu" class="h-[18px]" style="filter: brightness(0) saturate(100%) invert(61%) sepia(74%) saturate(3362%) hue-rotate(337deg) brightness(101%) contrast(96%);" />
           </button>
         </div>
       </div>
@@ -246,6 +321,45 @@
             Your personal life assistant. Let's start with something small.
           </p>
 
+          <!-- Landing Page Daily Mood Card -->
+          <div id="landing-mood-container" class="w-full mb-5 text-left">
+            <div class="w-full bg-[#181524]/95 border border-white/5 rounded-[24px] p-5 shadow-[0_12px_36px_rgba(0,0,0,0.4)] flex flex-col gap-4 select-none">
+              <span class="text-[14px] text-white/55 font-semibold tracking-wide">How are you feeling right now?</span>
+              <div class="flex items-center justify-between gap-2 mt-1" id="landing-mood-options">
+                <button onclick="submitLandingMood('Great')" data-mood="Great" class="flex-1 flex flex-col items-center justify-center py-4 px-1 rounded-2xl border bg-[#252233] border-white/5 text-white/70 hover:bg-[#2f2b42] hover:text-white active:scale-95 transition-all duration-200 group">
+                  <span class="text-3xl mb-2.5 transition-transform duration-200 group-hover:scale-110">
+                    <img src="/poc/emo-great.gif" class="w-[32px] h-[32px]" />
+                  </span>
+                  <span class="text-[12px] font-semibold tracking-wide">Great</span>
+                </button>
+                <button onclick="submitLandingMood('Good')" data-mood="Good" class="flex-1 flex flex-col items-center justify-center py-4 px-1 rounded-2xl border bg-[#252233] border-white/5 text-white/70 hover:bg-[#2f2b42] hover:text-white active:scale-95 transition-all duration-200 group">
+                  <span class="text-3xl mb-2.5 transition-transform duration-200 group-hover:scale-110">
+                    <img src="/poc/emo-good.gif" class="w-[32px] h-[32px]" />
+                  </span>
+                  <span class="text-[12px] font-semibold tracking-wide">Good</span>
+                </button>
+                <button onclick="submitLandingMood('Okay')" data-mood="Okay" class="flex-1 flex flex-col items-center justify-center py-4 px-1 rounded-2xl border bg-[#252233] border-white/5 text-white/70 hover:bg-[#2f2b42] hover:text-white active:scale-95 transition-all duration-200 group">
+                  <span class="text-3xl mb-2.5 transition-transform duration-200 group-hover:scale-110">
+                    <img src="/poc/emo-okay.gif" class="w-[32px] h-[32px]" />
+                  </span>
+                  <span class="text-[12px] font-semibold tracking-wide">Okay</span>
+                </button>
+                <button onclick="submitLandingMood('Low')" data-mood="Low" class="flex-1 flex flex-col items-center justify-center py-4 px-1 rounded-2xl border bg-[#252233] border-white/5 text-white/70 hover:bg-[#2f2b42] hover:text-white active:scale-95 transition-all duration-200 group">
+                  <span class="text-3xl mb-2.5 transition-transform duration-200 group-hover:scale-110">
+                    <img src="/poc/emo-low.gif" class="w-[32px] h-[32px]" />
+                  </span>
+                  <span class="text-[12px] font-semibold tracking-wide">Low</span>
+                </button>
+                <button onclick="submitLandingMood('Bad')" data-mood="Bad" class="flex-1 flex flex-col items-center justify-center py-4 px-1 rounded-2xl border bg-[#252233] border-white/5 text-white/70 hover:bg-[#2f2b42] hover:text-white active:scale-95 transition-all duration-200 group">
+                  <span class="text-3xl mb-2.5 transition-transform duration-200 group-hover:scale-110">
+                    <img src="/poc/emo-bad.gif" class="w-[32px] h-[32px]" />
+                  </span>
+                  <span class="text-[12px] font-semibold tracking-wide">Bad</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
 
 
           <!-- Quick Commands Header & Grid -->
@@ -265,7 +379,7 @@
 
               <!-- Schedule -->
               <div onclick="triggerCloudyAction('schedule')" class="flex items-center gap-3 p-3 bg-[#181524]/80 border border-white/5 rounded-2xl cursor-pointer hover:bg-white/10 transition-all active:scale-95 group">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#ff8754] to-[#f45c22] flex items-center justify-center text-lg shadow-md group-hover:scale-105 transition-transform">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#ff6b4a] to-[#e8431e] flex items-center justify-center text-lg shadow-md group-hover:scale-105 transition-transform">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                   </svg>
@@ -286,7 +400,7 @@
 
               <!-- Fortune Telling -->
               <div onclick="triggerCloudyAction('fortune-telling')" class="flex items-center gap-3 p-3 bg-[#181524]/80 border border-white/5 rounded-2xl cursor-pointer hover:bg-white/10 transition-all active:scale-95 group">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#ff8754] to-[#f45c22] flex items-center justify-center text-lg shadow-md group-hover:scale-105 transition-transform">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#ff6b4a] to-[#e8431e] flex items-center justify-center text-lg shadow-md group-hover:scale-105 transition-transform">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                   </svg>
@@ -393,7 +507,7 @@
           <!-- Header -->
           <div class="flex justify-between items-center select-none">
             <div class="flex items-center gap-3">
-              <div class="w-11 h-11 bg-gradient-to-br from-[#ff7e60] to-[#f85c3b] rounded-xl flex items-center justify-center shadow-md">
+              <div class="w-11 h-11 bg-gradient-to-br from-[#ff6b4a] to-[#e8431e] rounded-xl flex items-center justify-center shadow-md">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="2" y="5" width="20" height="14" rx="3" />
                   <line x1="2" y1="10" x2="22" y2="10" />
@@ -451,7 +565,7 @@
           <!-- Header -->
           <div class="flex justify-between items-center flex-shrink-0">
             <div class="flex items-center gap-3">
-              <div class="w-11 h-11 bg-gradient-to-br from-[#ff8754] to-[#f45c22] rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
+              <div class="w-11 h-11 bg-gradient-to-br from-[#ff6b4a] to-[#e8431e] rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                 </svg>
@@ -565,7 +679,7 @@
           <!-- Header -->
           <div class="flex justify-between items-center flex-shrink-0">
             <div class="flex items-center gap-3">
-              <div class="w-11 h-11 bg-gradient-to-br from-[#ff7e60] to-[#f85c3b] rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
+              <div class="w-11 h-11 bg-gradient-to-br from-[#ff6b4a] to-[#e8431e] rounded-xl flex items-center justify-center shadow-md flex-shrink-0">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/>
                   <polyline points="4 6 5 7 7 5"/><polyline points="4 12 5 13 7 11"/><polyline points="4 18 5 19 7 17"/>
@@ -606,6 +720,82 @@
           </button>
 
         </div>
+      </div>
+
+    </div>
+
+    <!-- DYNAMIC ACTIVE PERSONAL CHAT ROOM SCREEN (Slide-in pane styled like image) -->
+    <div id="room-chat-view" class="absolute inset-0 z-40 bg-[#0c0a12] flex flex-col transition-transform duration-300 transform translate-x-full select-none">
+      
+      <!-- Chat Header -->
+      <div class="h-20 border-b border-white/5 flex items-center px-4 justify-between select-none shrink-0 pt-3">
+        <div class="flex items-center">
+          <button onclick="closeRoomChatScreen()" class="flex items-center justify-center gap-1.5 px-3.5 h-8 rounded-full bg-[#18161b]/90 border border-white/10 hover:bg-[#201d25] active:scale-95 transition-all text-xs font-semibold text-white/90">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="mr-0.5">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            <span id="room-chat-title" class="truncate max-w-[95px]">AmandeerAma..</span>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- Sparkly Search/AI Search -->
+          <button onclick="showToast('AI Search feature coming soon! 🔮')" class="w-10 h-10 rounded-full flex justify-center items-center bg-[#18161b] border border-white/10 hover:bg-[#201d25] active:scale-95 transition-all text-white/70">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </button>
+          <!-- Call Button -->
+          <button onclick="showToast('Voice call starting... 📞')" class="w-10 h-10 rounded-full flex justify-center items-center bg-[#18161b] border border-[#f97050]/20 hover:bg-[#201d25] active:scale-95 transition-all text-[#f97050]">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+            </svg>
+          </button>
+          <!-- Auto-translation Overlapping arrows -->
+          <button onclick="showToast('AI Instant translation enabled! 🌐')" class="w-10 h-10 rounded-full flex justify-center items-center bg-[#18161b] border border-white/10 hover:bg-[#201d25] active:scale-95 transition-all text-white/70">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="17 1 21 5 17 9"></polyline>
+              <path d="M3 11V9a4 4 0 0 1 4-4h14"></polyline>
+              <polyline points="7 23 3 19 7 15"></polyline>
+              <path d="M21 13v2a4 4 0 0 1-4 4H3"></polyline>
+            </svg>
+          </button>
+          <!-- Settings Hamburger Menu -->
+          <button onclick="showToast('Menu options coming soon! ⚙️')" class="w-10 h-10 rounded-full flex justify-center items-center bg-[#18161b] border border-white/10 hover:bg-[#201d25] active:scale-95 transition-all text-white/70">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Messages Viewport Scroll Container -->
+      <div id="room-chat-messages-container" class="flex-1 overflow-y-auto p-4 flex flex-col gap-6 scrollbar-none pb-24">
+        <!-- Message bubbles are dynamically loaded here to perfectly match the photo example -->
+      </div>
+
+      <!-- Input Bar panel at the bottom -->
+      <div class="absolute bottom-0 left-0 right-0 p-4 bg-[#090514]/90 border-t border-white/5 backdrop-blur-md shrink-0 z-20">
+        <form onsubmit="event.preventDefault(); showToast('Message sending coming soon in this mockup! 💬');" class="flex gap-3.5 items-center">
+          <div onclick="showToast('More options coming soon! ➕')" class="w-11 h-11 shrink-0 rounded-full border border-white/15 flex items-center justify-center cursor-pointer hover:bg-white/5 active:scale-95 transition-all text-white/70" title="Add attachments">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </div>
+
+          <div class="flex-1 bg-[#181524] border border-white/5 rounded-full px-4 py-1 flex items-center gap-3 relative shadow-inner">
+            <input type="text" autocomplete="off" placeholder="Aa" class="flex-1 bg-transparent border-none py-2 text-sm focus:outline-none placeholder:text-white/35 text-white">
+            <button type="button" onclick="showToast('Emojis coming soon! 😊')" class="text-[#f97050] hover:text-[#ff8754]">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+              </svg>
+            </button>
+          </div>
+        </form>
       </div>
 
     </div>
@@ -790,7 +980,7 @@
 
         <!-- Expense -->
         <button onclick="clickQuickMenuItem('expense')" class="flex flex-col items-center gap-2 active:scale-[0.90] transition-transform duration-100 group" title="Expense">
-          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#e85c41] via-[#c4406a] to-[#9b3ab8] flex items-center justify-center shadow-[0_6px_20px_rgba(232,92,65,0.4)] group-hover:shadow-[0_8px_28px_rgba(232,92,65,0.55)] group-active:shadow-none transition-shadow">
+          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#ff6b4a] to-[#e8431e] flex items-center justify-center shadow-[0_6px_20px_rgba(249,112,80,0.3)] group-hover:shadow-[0_8px_28px_rgba(249,112,80,0.45)] group-active:shadow-none transition-shadow">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="2" y="5" width="20" height="14" rx="3"/><line x1="2" y1="10" x2="22" y2="10"/>
             </svg>
@@ -800,7 +990,7 @@
 
         <!-- Schedule -->
         <button onclick="clickQuickMenuItem('schedule')" class="flex flex-col items-center gap-2 active:scale-[0.90] transition-transform duration-100 group" title="Schedule">
-          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#e85c41] via-[#c4406a] to-[#9b3ab8] flex items-center justify-center shadow-[0_6px_20px_rgba(155,58,184,0.4)] group-hover:shadow-[0_8px_28px_rgba(155,58,184,0.55)] group-active:shadow-none transition-shadow">
+          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#ff6b4a] to-[#e8431e] flex items-center justify-center shadow-[0_6px_20px_rgba(249,112,80,0.3)] group-hover:shadow-[0_8px_28px_rgba(249,112,80,0.45)] group-active:shadow-none transition-shadow">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
             </svg>
@@ -810,7 +1000,7 @@
 
         <!-- To-do -->
         <button onclick="clickQuickMenuItem('todo')" class="flex flex-col items-center gap-2 active:scale-[0.90] transition-transform duration-100 group" title="To-do">
-          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#e85c41] via-[#c4406a] to-[#9b3ab8] flex items-center justify-center shadow-[0_6px_20px_rgba(155,58,184,0.4)] group-hover:shadow-[0_8px_28px_rgba(155,58,184,0.55)] group-active:shadow-none transition-shadow">
+          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#ff6b4a] to-[#e8431e] flex items-center justify-center shadow-[0_6px_20px_rgba(249,112,80,0.3)] group-hover:shadow-[0_8px_28px_rgba(249,112,80,0.45)] group-active:shadow-none transition-shadow">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/>
               <polyline points="4 6 5 7 7 5"/><polyline points="4 12 5 13 7 11"/><polyline points="4 18 5 19 7 17"/>
@@ -821,7 +1011,7 @@
 
         <!-- Mood -->
         <button onclick="clickQuickMenuItem('mood')" class="flex flex-col items-center gap-2 active:scale-[0.90] transition-transform duration-100 group" title="Mood">
-          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#e85c41] via-[#c4406a] to-[#9b3ab8] flex items-center justify-center shadow-[0_6px_20px_rgba(232,92,65,0.4)] group-hover:shadow-[0_8px_28px_rgba(232,92,65,0.55)] group-active:shadow-none transition-shadow">
+          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#ff6b4a] to-[#e8431e] flex items-center justify-center shadow-[0_6px_20px_rgba(249,112,80,0.3)] group-hover:shadow-[0_8px_28px_rgba(249,112,80,0.45)] group-active:shadow-none transition-shadow">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
             </svg>
@@ -831,7 +1021,7 @@
 
         <!-- Summary -->
         <button onclick="clickQuickMenuItem('summary')" class="flex flex-col items-center gap-2 active:scale-[0.90] transition-transform duration-100 group" title="Summary">
-          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#e85c41] via-[#c4406a] to-[#9b3ab8] flex items-center justify-center shadow-[0_6px_20px_rgba(155,58,184,0.4)] group-hover:shadow-[0_8px_28px_rgba(155,58,184,0.55)] group-active:shadow-none transition-shadow">
+          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#ff6b4a] to-[#e8431e] flex items-center justify-center shadow-[0_6px_20px_rgba(249,112,80,0.3)] group-hover:shadow-[0_8px_28px_rgba(249,112,80,0.45)] group-active:shadow-none transition-shadow">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
             </svg>
@@ -841,7 +1031,7 @@
 
         <!-- Fortune Telling -->
         <button onclick="clickQuickMenuItem('fortune-telling')" class="flex flex-col items-center gap-2 active:scale-[0.90] transition-transform duration-100 group" title="Fortune Telling">
-          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#e85c41] via-[#c4406a] to-[#9b3ab8] flex items-center justify-center shadow-[0_6px_20px_rgba(155,58,184,0.4)] group-hover:shadow-[0_8px_28px_rgba(155,58,184,0.55)] group-active:shadow-none transition-shadow">
+          <div class="w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#ff6b4a] to-[#e8431e] flex items-center justify-center shadow-[0_6px_20px_rgba(249,112,80,0.3)] group-hover:shadow-[0_8px_28px_rgba(249,112,80,0.45)] group-active:shadow-none transition-shadow">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
             </svg>

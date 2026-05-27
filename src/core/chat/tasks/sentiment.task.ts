@@ -2,6 +2,8 @@ import type { IChatContext, IChatTask } from '~/src/core/chat/chat.type'
 
 export class SentimentTask implements IChatTask {
   readonly name = 'chat-sentiment'
+  readonly skill = 'sentiment'
+  readonly skillInstruction = 'Speak in a tone that reflects the user\'s detected sentiment. If user sentiment is negative, speak with deep empathy, extra politeness, and offer a warm comforting response.'
 
   async execute(context: IChatContext): Promise<void> {
     const text = context.message.toLowerCase()
