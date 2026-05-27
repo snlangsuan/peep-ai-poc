@@ -454,6 +454,52 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     }
   }
 
+  private extractOpenAIDirectToolResponse(
+    openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  ): string {
+    const toolMsg = openaiMessages.slice().reverse().find((msg) => msg.role === 'tool')
+    let payloadText = ''
+    if (toolMsg && toolMsg.content) {
+      if (typeof toolMsg.content === 'string') {
+        payloadText = toolMsg.content
+      } else if (Array.isArray(toolMsg.content)) {
+        payloadText = toolMsg.content.map((part) => ('text' in part ? part.text : '')).join('')
+      }
+    }
+    let responseText = payloadText
+    try {
+      const parsed = JSON.parse(payloadText)
+      if (parsed && parsed.message) {
+        responseText = parsed.message
+      }
+    } catch {}
+    return responseText
+  }
+
+  private mockOpenAIResponse(
+    id: string,
+    created: number,
+    model: string,
+    responseText: string,
+    usage: OpenAI.Chat.Completions.ChatCompletion['usage'],
+  ): OpenAI.Chat.Completions.ChatCompletion {
+    return {
+      id,
+      object: 'chat.completion',
+      created,
+      model,
+      choices: [{
+        index: 0,
+        message: {
+          role: 'assistant',
+          content: responseText
+        },
+        finish_reason: 'stop'
+      }],
+      usage
+    } as unknown as OpenAI.Chat.Completions.ChatCompletion
+  }
+
   private async runOpenAIToolReasoningLoop(
     initialResponse: OpenAI.Chat.Completions.ChatCompletion,
     openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
@@ -476,6 +522,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     let assistantMessage = response.choices[0]?.message
     let toolCalls = assistantMessage?.tool_calls
 
+    const directReturnTools = ['manage_expenses', 'create_schedule', 'manage_todos']
+
     while (toolCalls && toolCalls.length > 0) {
       if (thinkCallback && assistantMessage?.content) {
         await thinkCallback({ status: 'thinking', message: assistantMessage.content })
@@ -488,8 +536,10 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         tool_calls: toolCalls,
       })
 
-      const directReturnTools = ['manage_expenses', 'create_schedule', 'manage_todos']
-      const hasDirectTool = toolCalls.some(call => call.type === 'function' && call.function?.name && directReturnTools.includes(call.function.name))
+      const hasDirectTool = toolCalls.some(
+        (call) =>
+          call.type === 'function' && call.function?.name && directReturnTools.includes(call.function.name),
+      )
 
       const stepResult = await this.executeOpenAIToolStep(toolCalls, openaiMessages, context, thinkCallback)
       toolUsageCount += stepResult.usageCount
@@ -497,39 +547,15 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       this.endToolExecutionStep()
 
       if (hasDirectTool) {
-        // Find the last tool message added to openaiMessages
-        const toolMsg = openaiMessages.slice().reverse().find(msg => msg.role === 'tool')
-        let payloadText = ''
-        if (toolMsg && toolMsg.content) {
-          if (typeof toolMsg.content === 'string') {
-            payloadText = toolMsg.content
-          } else if (Array.isArray(toolMsg.content)) {
-            payloadText = toolMsg.content.map(part => 'text' in part ? part.text : '').join('')
-          }
-        }
-        let responseText = payloadText
-        try {
-          const parsed = JSON.parse(payloadText)
-          if (parsed && parsed.message) responseText = parsed.message
-        } catch {}
+        const responseText = this.extractOpenAIDirectToolResponse(openaiMessages)
+        const mockResponse = this.mockOpenAIResponse(
+          response.id,
+          response.created,
+          response.model,
+          responseText,
+          response.usage,
+        )
 
-        // Mock a final OpenAI completion response
-        const mockResponse = {
-          id: response.id,
-          object: 'chat.completion',
-          created: response.created,
-          model: response.model,
-          choices: [{
-            index: 0,
-            message: {
-              role: 'assistant',
-              content: responseText
-            },
-            finish_reason: 'stop'
-          }],
-          usage: response.usage
-        } as unknown as OpenAI.Chat.Completions.ChatCompletion
-        
         return {
           finalResponse: mockResponse,
           toolUsageCount,
@@ -640,6 +666,46 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     }
   }
 
+  private extractDirectToolResponse(toolResponseParts: Part[], directReturnTools: string[]): string {
+    const directPart = toolResponseParts.find(
+      (part) => part.functionResponse?.name && directReturnTools.includes(part.functionResponse.name),
+    )
+    const rawResponse = directPart?.functionResponse?.response
+    if (!rawResponse) {
+      return ''
+    }
+
+    if (typeof rawResponse === 'string') {
+      try {
+        const parsed = JSON.parse(rawResponse)
+        if (parsed && typeof parsed === 'object' && 'message' in parsed && typeof parsed.message === 'string') {
+          return parsed.message
+        }
+      } catch {}
+      return rawResponse
+    }
+
+    if (typeof rawResponse === 'object' && rawResponse !== null && 'message' in rawResponse) {
+      const msg = (rawResponse as Record<string, unknown>).message
+      if (typeof msg === 'string') {
+        return msg
+      }
+    }
+
+    return JSON.stringify(rawResponse)
+  }
+
+  private mockGeminiResponse(responseText: string): GenerateContentResponse {
+    return {
+      candidates: [{
+        content: {
+          role: 'model',
+          parts: [{ text: responseText }]
+        }
+      }]
+    } as unknown as GenerateContentResponse
+  }
+
   private async runGeminiToolReasoningLoop(
     initialResponse: GenerateContentResponse,
     contents: Content[],
@@ -660,6 +726,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     let toolUsageCount = 0
     let toolCredits = 0
 
+    const directReturnTools = ['manage_expenses', 'create_schedule', 'manage_todos']
+
     while (this.hasFunctionCalls(response)) {
       const modelContent = response.candidates?.[0]?.content
       if (!modelContent) {
@@ -679,8 +747,9 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       this.startNewToolExecutionStep()
       const functionCallParts = (modelContent.parts || []).filter((part: Part) => !!part.functionCall)
 
-      const directReturnTools = ['manage_expenses', 'create_schedule', 'manage_todos']
-      const hasDirectTool = functionCallParts.some(part => part.functionCall?.name && directReturnTools.includes(part.functionCall.name))
+      const hasDirectTool = functionCallParts.some(
+        (part) => part.functionCall?.name && directReturnTools.includes(part.functionCall.name),
+      )
 
       const { toolResponseParts, usageCount, credits } = await this.processToolCalls(
         functionCallParts,
@@ -692,33 +761,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       this.endToolExecutionStep()
 
       if (hasDirectTool) {
-        // Find the first executed direct tool response
-        const directPart = toolResponseParts.find(part => part.functionResponse?.name && directReturnTools.includes(part.functionResponse.name))
-        const rawResponse = directPart?.functionResponse?.response as any
-        let responseText = ''
-        if (rawResponse) {
-          if (typeof rawResponse === 'string') {
-            responseText = rawResponse
-            try {
-              const parsed = JSON.parse(rawResponse)
-              if (parsed && parsed.message) responseText = parsed.message
-            } catch {}
-          } else if (rawResponse.message) {
-            responseText = rawResponse.message
-          } else {
-            responseText = JSON.stringify(rawResponse)
-          }
-        }
-        
-        // Mock a final response to complete immediately
-        const mockResponse = {
-          candidates: [{
-            content: {
-              role: 'model',
-              parts: [{ text: responseText }]
-            }
-          }]
-        } as unknown as GenerateContentResponse
+        const responseText = this.extractDirectToolResponse(toolResponseParts, directReturnTools)
+        const mockResponse = this.mockGeminiResponse(responseText)
         return {
           finalResponse: mockResponse,
           toolUsageCount,
