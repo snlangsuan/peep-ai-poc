@@ -3,45 +3,44 @@ import { chatResponseSchema } from '#/features/chats/v1/chat.schema'
 
 import type { TChatRawResponse, TChatResponse } from '#/features/chats/v1/chat.type'
 
-export function mapRawChatToResponse(item: TChatRawResponse): TChatResponse {
-  let content: TChatResponse['content'] = [
-    {
-      type: 'text' as const,
-      text: item.message || '',
-    },
-  ]
+function normalizeChatError(
+  raw: TChatRawResponse['error'] | string,
+): { message: string; stage: string; code?: string } | null {
+  if (raw == null) return null
+  if (typeof raw === 'string') return { message: raw, stage: 'unknown' }
+  return raw
+}
 
-  if (item.message) {
-    const msgStr = item.message.trim()
-    if (msgStr.startsWith('{') && msgStr.endsWith('}')) {
-      try {
-        const parsed = JSON.parse(msgStr)
-        if (parsed.type === 'action' && typeof parsed.link === 'string') {
-          content = [
-            {
-              type: 'action' as const,
-              link: parsed.link,
-            },
-          ]
-        } else if (parsed.type === 'mood_card' && Array.isArray(parsed.options)) {
-          content = [
-            {
-              type: 'mood_card' as const,
-              options: parsed.options,
-              selected_mood: parsed.selected_mood ?? null,
-            },
-          ]
-        }
-      } catch {}
-    } else if (msgStr.startsWith('peep://')) {
-      content = [
+function parseStructuredMessage(msgStr: string): TChatResponse['content'] | null {
+  if (msgStr.startsWith('peep://')) {
+    return [{ type: 'action' as const, link: msgStr }]
+  }
+  if (!msgStr.startsWith('{') || !msgStr.endsWith('}')) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(msgStr)
+    if (parsed.type === 'action' && typeof parsed.link === 'string') {
+      return [{ type: 'action' as const, link: parsed.link }]
+    }
+    if (parsed.type === 'mood_card' && Array.isArray(parsed.options)) {
+      return [
         {
-          type: 'action' as const,
-          link: msgStr,
+          type: 'mood_card' as const,
+          options: parsed.options,
+          selected_mood: parsed.selected_mood ?? null,
         },
       ]
     }
-  }
+  } catch {}
+  return null
+}
+
+export function mapRawChatToResponse(item: TChatRawResponse): TChatResponse {
+  const defaultContent: TChatResponse['content'] = [{ type: 'text' as const, text: item.message || '' }]
+  const content = item.message
+    ? parseStructuredMessage(item.message.trim()) ?? defaultContent
+    : defaultContent
 
   return chatResponseSchema.parse({
     id: item.id || getUUID(),
@@ -59,6 +58,6 @@ export function mapRawChatToResponse(item: TChatRawResponse): TChatResponse {
     tool_credits: item.tool_credits,
     credits_used: item.credits_used,
     tools: item.tools,
-    error: item.error ?? null,
+    error: normalizeChatError(item.error),
   })
 }

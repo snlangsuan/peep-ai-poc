@@ -18,25 +18,38 @@ export class WebSearchTool implements IChatTool {
     required: ['query'],
   }
 
+  private static readonly MAX_RESULTS = 5
+  private static readonly MAX_SNIPPET_CHARS = 250
+  private static readonly MAX_TITLE_CHARS = 150
+
   async execute(args: { query: string }, context: IChatContext): Promise<string> {
     const baseUrl = envVariables.WEB_SEARCH_API_URL.replace(/\/$/, '')
     const url = `${baseUrl}?q=${encodeURIComponent(args.query)}`
     try {
       const response = await fetch(url)
       if (!response.ok) {
-        throw new Error(`Search service returned status ${response.status}`)
+        return JSON.stringify({ error: `Search service returned status ${response.status}` })
       }
 
-      const data = await response.json()
-      return JSON.stringify({
-        source: 'Peep Search Engine Service',
-        query: args.query,
-        timestamp: new Date().toISOString(),
-        results: data.results || data,
-      })
+      const data = (await response.json()) as {
+        results?: Array<{ title?: string; content?: string; url?: string }>
+      }
+      const results = (data.results || [])
+        .slice(0, WebSearchTool.MAX_RESULTS)
+        .map((r) => ({
+          title: (r.title || '').slice(0, WebSearchTool.MAX_TITLE_CHARS).trim(),
+          snippet: (r.content || '').replace(/\s+/g, ' ').slice(0, WebSearchTool.MAX_SNIPPET_CHARS).trim(),
+          url: r.url || '',
+        }))
+        .filter((r) => r.title || r.snippet)
+
+      if (results.length === 0) {
+        return JSON.stringify({ error: 'No relevant results found.' })
+      }
+      return JSON.stringify({ results })
     } catch (error) {
       return JSON.stringify({
-        error: `Failed to fetch search results from Peep Search Engine: ${error instanceof Error ? error.message : String(error)}`
+        error: `Failed to fetch search results: ${error instanceof Error ? error.message : String(error)}`,
       })
     }
   }

@@ -25,6 +25,32 @@ import type {
 import type { Content, Tool, GenerateContentResponse, Part } from '@google/genai'
 
 // ==========================================
+// Error types
+// ==========================================
+
+export type TChatAgentStage =
+  | 'persist_user_message'
+  | 'classify_intent'
+  | 'llm_call'
+  | 'tool_execute'
+  | 'persist_bot_message'
+  | 'unknown'
+
+export class ChatAgentError extends Error {
+  readonly stage: TChatAgentStage
+  readonly code?: string
+  constructor(stage: TChatAgentStage, message: string, options?: { code?: string; cause?: unknown }) {
+    super(message)
+    this.name = 'ChatAgentError'
+    this.stage = stage
+    this.code = options?.code
+    if (options?.cause !== undefined) {
+      ;(this as Error & { cause?: unknown }).cause = options.cause
+    }
+  }
+}
+
+// ==========================================
 // Main ChatAgent Class
 // ==========================================
 
@@ -162,16 +188,16 @@ export class ChatAgent {
       },
       '[chat-agent] intent classified',
     )
-    const dynamicInstruction = await this.getDynamicInstruction(context)
+    const baseInstruction = await this.buildBaseInstruction(context)
 
     // Engine-specific reasoning loop execution.
     // The bigger model handles parameter extraction, tool execution, and response synthesis.
     // For `direct_tool` classification, getOpenAIToolsConfig/getGeminiToolsConfig narrow the toolset to one.
     if (this.provider === 'openai') {
-      return this.queryOpenAI(input, combinedMessage, context, classification, dynamicInstruction, thinkCallback)
+      return this.queryOpenAI(input, combinedMessage, context, classification, baseInstruction, thinkCallback)
     }
 
-    return this.queryGemini(parts, context, classification, dynamicInstruction, thinkCallback)
+    return this.queryGemini(parts, context, classification, baseInstruction, thinkCallback)
   }
 
   // ==========================================
@@ -249,7 +275,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     combinedMessage: string,
     context: IChatContext,
     classification: IChatIntent,
-    dynamicInstruction: string,
+    baseInstruction: string,
     thinkCallback?: TThinkCallback,
   ): Promise<IChatAgentResult> {
     if (!this.openai) {
@@ -259,7 +285,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     const toolsConfig = this.getOpenAIToolsConfig(classification)
     const userContent = mapInputToOpenAIContent(input)
     const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      { role: 'system', content: dynamicInstruction },
+      { role: 'system', content: this.composeInstruction(baseInstruction) },
       ...this.history.map((h) => ({
         role: (h.role === 'model' ? 'assistant' : 'user') as 'assistant' | 'user',
         content: h.parts?.[0]?.text || '',
@@ -276,7 +302,14 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       })
 
       const { finalResponse, toolUsageCount, toolCredits, totalInputTokens, totalOutputTokens } =
-        await this.runOpenAIToolReasoningLoop(response, openaiMessages, toolsConfig, context, thinkCallback)
+        await this.runOpenAIToolReasoningLoop(
+          response,
+          openaiMessages,
+          toolsConfig,
+          context,
+          baseInstruction,
+          thinkCallback,
+        )
 
       const finalResponseText = finalResponse.choices[0]?.message?.content || ''
 
@@ -330,7 +363,12 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       }
     } catch (error) {
       logger.error(error, 'ChatAgent.queryOpenAI execution failed')
-      throw error
+      if (error instanceof ChatAgentError) throw error
+      throw new ChatAgentError(
+        'llm_call',
+        error instanceof Error ? error.message : String(error),
+        { cause: error },
+      )
     }
   }
 
@@ -385,6 +423,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     toolsConfig: OpenAI.Chat.Completions.ChatCompletionTool[],
     context: IChatContext,
+    baseInstruction: string,
     thinkCallback?: TThinkCallback,
   ): Promise<{
     finalResponse: OpenAI.Chat.Completions.ChatCompletion
@@ -412,6 +451,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
           '[chat-agent] reasoning loop hit max iterations, forcing summary',
         )
         const summaryInstruction = `You have already used ${step} tool-calling rounds and reached the maximum allowed (${ChatAgent.MAX_REASONING_STEPS}). Do NOT call any more tools. Based on the tool results gathered so far in this conversation, write a final answer to the user's original question now in Cloudy's friendly Thai persona. If the information gathered is insufficient to fully answer, apologize politely and tell the user what you found and what remained unclear — but do not call any tool.`
+        openaiMessages[0] = { role: 'system', content: this.composeInstruction(baseInstruction) }
         response = await this.openai!.chat.completions.create({
           model: envVariables.OPENAI_CHAT_MODEL,
           messages: [...openaiMessages, { role: 'system', content: summaryInstruction }],
@@ -471,6 +511,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         }
       }
 
+      openaiMessages[0] = { role: 'system', content: this.composeInstruction(baseInstruction) }
       response = await this.openai!.chat.completions.create({
         model: envVariables.OPENAI_CHAT_MODEL,
         messages: openaiMessages,
@@ -503,7 +544,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     parts: Part[],
     context: IChatContext,
     classification: IChatIntent,
-    dynamicInstruction: string,
+    baseInstruction: string,
     thinkCallback?: TThinkCallback,
   ): Promise<IChatAgentResult> {
     const toolsConfig = this.getGeminiToolsConfig(classification)
@@ -511,7 +552,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
 
     try {
       const response = await this.aiService.generate(contents, {
-        systemInstruction: dynamicInstruction,
+        systemInstruction: this.composeInstruction(baseInstruction),
         tools: toolsConfig,
       })
 
@@ -521,7 +562,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
           contents,
           toolsConfig,
           context,
-          dynamicInstruction,
+          baseInstruction,
           thinkCallback,
         )
 
@@ -532,7 +573,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
           { userId: this.userId, preview: finalResponseText.slice(0, 200) },
           '[chat-agent] model echoed raw tool output, forcing synthesis pass',
         )
-        const synthesisInstruction = `${dynamicInstruction}\n\nCRITICAL: The previous turn dumped raw JSON tool output instead of answering the user. You MUST now write a final natural Thai answer in Cloudy's persona based on the tool results in this conversation. Do NOT include any JSON, braces, field names, or URL lists. Do NOT call any tools. Just write prose that answers the user's original question.`
+        const synthesisInstruction = `${this.composeInstruction(baseInstruction)}\n\nCRITICAL: The previous turn dumped raw JSON tool output instead of answering the user. You MUST now write a final natural Thai answer in Cloudy's persona based on the tool results in this conversation. Do NOT include any JSON, braces, field names, or URL lists. Do NOT call any tools. Just write prose that answers the user's original question.`
         const synthesisResponse = await this.aiService.generate(contents, {
           systemInstruction: synthesisInstruction,
         })
@@ -599,7 +640,12 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       }
     } catch (error) {
       logger.error(error, 'ChatAgent.queryGemini execution failed')
-      throw error
+      if (error instanceof ChatAgentError) throw error
+      throw new ChatAgentError(
+        'llm_call',
+        error instanceof Error ? error.message : String(error),
+        { cause: error },
+      )
     }
   }
 
@@ -648,7 +694,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     contents: Content[],
     toolsConfig: Tool[] | undefined,
     context: IChatContext,
-    dynamicInstruction: string,
+    baseInstruction: string,
     thinkCallback?: TThinkCallback,
   ): Promise<{
     finalResponse: GenerateContentResponse
@@ -672,7 +718,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
           { userId: this.userId, step, maxSteps: ChatAgent.MAX_REASONING_STEPS },
           '[chat-agent] reasoning loop hit max iterations, forcing summary',
         )
-        const summaryInstruction = `${dynamicInstruction}\n\nIMPORTANT: You have already used ${step} tool-calling rounds and reached the maximum allowed (${ChatAgent.MAX_REASONING_STEPS}). Do NOT call any more tools. Based on the tool results gathered so far in this conversation, write a final answer to the user's original question now in Cloudy's friendly Thai persona. If the information gathered is insufficient to fully answer, apologize politely and tell the user what you found and what remained unclear — but do not call any tool.`
+        const summaryInstruction = `${this.composeInstruction(baseInstruction)}\n\nIMPORTANT: You have already used ${step} tool-calling rounds and reached the maximum allowed (${ChatAgent.MAX_REASONING_STEPS}). Do NOT call any more tools. Based on the tool results gathered so far in this conversation, write a final answer to the user's original question now in Cloudy's friendly Thai persona. If the information gathered is insufficient to fully answer, apologize politely and tell the user what you found and what remained unclear — but do not call any tool.`
         response = await this.aiService.generate(contents, {
           systemInstruction: summaryInstruction,
         })
@@ -737,7 +783,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       })
 
       response = await this.aiService.generate(contents, {
-        systemInstruction: dynamicInstruction,
+        systemInstruction: this.composeInstruction(baseInstruction),
         tools: toolsConfig,
       })
 
@@ -905,6 +951,24 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     return { responsePayload, cost }
   }
 
+  private toFunctionResponseStruct(payload: unknown): Record<string, unknown> {
+    if (typeof payload === 'string') {
+      try {
+        const parsed = JSON.parse(payload)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>
+        }
+        return { result: parsed }
+      } catch {
+        return { result: payload }
+      }
+    }
+    if (typeof payload === 'object' && payload !== null) {
+      return payload as Record<string, unknown>
+    }
+    return { result: payload }
+  }
+
   private async processToolCalls(
     functionCallParts: Part[],
     context: IChatContext,
@@ -923,7 +987,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       toolResponseParts.push({
         functionResponse: {
           name: call.name,
-          response: responsePayload as Record<string, unknown>,
+          response: this.toFunctionResponseStruct(responsePayload),
         },
       })
       usageCount += 1
@@ -956,7 +1020,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       openaiMessages.push({
         role: 'tool',
         tool_call_id: call.id,
-        content: JSON.stringify(responsePayload),
+        content: typeof responsePayload === 'string' ? responsePayload : JSON.stringify(responsePayload),
       })
     }
     return { usageCount, credits }
@@ -1091,20 +1155,53 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     }
   }
 
-  async markUserMessageAsFailed(messageId: string, errorMessage: string): Promise<void> {
+  async markUserMessageAsFailed(
+    messageId: string,
+    errorMessage: string,
+    options?: { stage?: TChatAgentStage; code?: string },
+  ): Promise<void> {
     try {
       await db
         .collection('chats')
         .doc(messageId)
         .update({
-          error: errorMessage.slice(0, 500),
+          error: {
+            message: errorMessage.slice(0, 500),
+            stage: options?.stage ?? 'unknown',
+            ...(options?.code ? { code: options.code } : {}),
+          },
         })
     } catch (error) {
       logger.error({ error, messageId }, 'Failed to mark user message as failed in Firestore')
     }
   }
 
-  private async saveUserMessage(message: string): Promise<ISavedUserMessage | undefined> {
+  async saveBotErrorMessage(
+    errorMessage: string,
+    options?: { stage?: TChatAgentStage; code?: string },
+  ): Promise<ISavedBotMessage | undefined> {
+    try {
+      const docRef = db.collection('chats').doc()
+      const createdAt = getUtcTime().toDate()
+      const data = {
+        sender_id: 'bot' as const,
+        message: '',
+        created_at: createdAt,
+        error: {
+          message: errorMessage.slice(0, 500),
+          stage: options?.stage ?? 'unknown',
+          ...(options?.code ? { code: options.code } : {}),
+        },
+      }
+      await docRef.set({ user_id: this.userId, ...data })
+      return { id: docRef.id, ...data }
+    } catch (error) {
+      logger.error({ error }, 'Failed to save bot error message to Firestore')
+      return undefined
+    }
+  }
+
+  private async saveUserMessage(message: string): Promise<ISavedUserMessage> {
     try {
       const docRef = db.collection('chats').doc()
       const createdAt = getUtcTime().toDate()
@@ -1121,8 +1218,9 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         created_at: createdAt,
       }
     } catch (error) {
-      logger.error(error, 'Failed to save user message to Firestore')
-      return undefined
+      throw new ChatAgentError('persist_user_message', 'Failed to save user message to Firestore', {
+        cause: error,
+      })
     }
   }
 
@@ -1322,14 +1420,13 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     ]
   }
 
-  private async getDynamicInstruction(context?: IChatContext): Promise<string> {
-    const nowStr = getLocalTime().format('YYYY-MM-DDTHH:mm:ssZ')
+  /** Static parts of the system prompt — fetched once per query, safe to cache for the duration of a single user turn. */
+  private async buildBaseInstruction(context?: IChatContext): Promise<string> {
     let memoriesText = ''
     if (this.persistMemory) {
       memoriesText = await this.loadMemoriesFromFirestore()
     }
 
-    // Dynamic User Profile Injection
     let userProfileText = ''
     try {
       const userDoc = await db.collection('users').doc(this.userId).get()
@@ -1342,7 +1439,6 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       logger.warn(e, 'Failed to fetch user profile for dynamic instruction injection')
     }
 
-    // Dynamic Task-specific Skill Guideline Injection
     let taskSkillsText = ''
     if (this.tasks && this.tasks.length > 0) {
       const activeSkills = this.tasks
@@ -1354,7 +1450,6 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       }
     }
 
-    // Registered Skill Catalog Injection — always inject every registered skill's instruction
     let skillsCatalogText = ''
     if (this.skills.length > 0) {
       const blocks = this.skills
@@ -1366,8 +1461,17 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       skillsCatalogText = `\n\nAvailable Skills (capabilities you have access to via tool calls):\n\n${blocks}`
     }
 
-    // Compose: Persona → System Instruction → User Profile → Memories → Active Task Skills → Skill Catalog → Current Time
-    return `${this.persona}\n\n${this.systemInstruction}${userProfileText}${memoriesText}${taskSkillsText}${skillsCatalogText}\n\nCurrent Thai local time is ${nowStr}.`
+    return `${this.persona}\n\n${this.systemInstruction}${userProfileText}${memoriesText}${taskSkillsText}${skillsCatalogText}`
+  }
+
+  /** Dynamic time suffix — recomputed every reasoning round so multi-round loops see fresh "now". */
+  private getCurrentTimeSuffix(): string {
+    const nowStr = getLocalTime().format('YYYY-MM-DDTHH:mm:ssZ')
+    return `\n\nCurrent Thai local time is ${nowStr}.`
+  }
+
+  private composeInstruction(baseInstruction: string): string {
+    return `${baseInstruction}${this.getCurrentTimeSuffix()}`
   }
 
   private hasFunctionCalls(response: GenerateContentResponse): boolean {

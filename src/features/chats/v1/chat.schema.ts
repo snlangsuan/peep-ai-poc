@@ -79,7 +79,23 @@ export const chatResponseSchema = z.object({
       }),
     )
     .optional(),
-  error: z.string().nullable().optional(),
+  error: z
+    .preprocess(
+      (val) => {
+        if (val == null) return val
+        if (typeof val === 'string') return { message: val, stage: 'unknown' }
+        return val
+      },
+      z
+        .object({
+          message: z.string(),
+          stage: z.string(),
+          code: z.string().optional(),
+        })
+        .nullable()
+        .optional(),
+    )
+    .optional(),
 })
 
 export const chatItemResponseSchema = z.object({
@@ -107,7 +123,14 @@ export const chatSseEventSchema = z.discriminatedUnion('type', [
       remaining_credits: z.number().optional(),
     }),
   }),
-  z.object({ type: z.literal('error'), message: z.string(), message_id: z.string().optional() }),
+  z.object({
+    type: z.literal('error'),
+    message: z.string(),
+    message_id: z.string().optional(),
+    stage: z.string().optional(),
+    code: z.string().optional(),
+    bot_message_id: z.string().optional(),
+  }),
 ])
 
 export const chatActionPayloadSchema = z.object({

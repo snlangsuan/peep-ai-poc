@@ -1,7 +1,7 @@
 import { logger } from '#/common/libs/logger.lib'
 import { memoryQueueService } from '#/common/services/queue.service'
 import { sseBroker } from '#/common/services/sse-broker.service'
-import { ChatAgent } from '#/core/chat/chat-agent'
+import { ChatAgent, ChatAgentError } from '#/core/chat/chat-agent'
 import { mapRawChatToResponse } from '#/features/chats/v1/chat.mapper'
 import {
   createWebSearchSkill,
@@ -133,14 +133,22 @@ export function startQueueWorker() {
         })
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err)
-        logger.error({ userId, messageId: lastUserMessageId, err }, '[chat-agent] failed')
+        const stage = err instanceof ChatAgentError ? err.stage : 'unknown'
+        const code = err instanceof ChatAgentError ? err.code : undefined
+        logger.error({ userId, messageId: lastUserMessageId, stage, code, err }, '[chat-agent] failed')
+
         if (lastUserMessageId) {
-          await agent.markUserMessageAsFailed(lastUserMessageId, errorMessage)
+          await agent.markUserMessageAsFailed(lastUserMessageId, errorMessage, { stage, code })
         }
+        const savedBotError = await agent.saveBotErrorMessage(errorMessage, { stage, code })
+
         sseBroker.emit(userId, {
           type: 'error',
           message: errorMessage,
           message_id: lastUserMessageId,
+          stage,
+          ...(code ? { code } : {}),
+          ...(savedBotError ? { bot_message_id: savedBotError.id } : {}),
         })
       }
     },

@@ -85,6 +85,7 @@ export interface ISavedBotMessage {
   credits_used?: number
   tools?: Array<{ name: string; credits: number }>
   skills_used?: Array<{ name: string; overheadCredits: number; toolCount: number }>
+  error?: { message: string; stage: string; code?: string }
 }
 
 export interface ISavedUserMessage {
