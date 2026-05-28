@@ -35,4 +35,5 @@ export type TChatRawResponse = {
   tool_credits?: number
   credits_used?: number
   tools?: Array<{ name: string; credits: number }>
+  error?: string | null
 }

@@ -9,7 +9,6 @@ export type TChatMessageItem =
 export interface IChatIntent {
   type: 'direct_tool' | 'general_chat' | 'complex_agent'
   toolName?: string
-  args?: Record<string, unknown>
 }
 
 export interface IChatContext {
@@ -32,6 +31,12 @@ export interface IChatTool {
   parameters: Record<string, unknown>
   execute(args: Record<string, unknown>, context: IChatContext): Promise<string>
   creditCost?: number
+  /**
+   * If false, the classifier will not route this tool through the `direct_tool` fast-path.
+   * Set false for tools whose results require further LLM reasoning (e.g. data-fetching tools like web_search).
+   * Defaults to true.
+   */
+  allowDirectInvoke?: boolean
 }
 
 export interface IChatAgentMetadata {
@@ -41,6 +46,27 @@ export interface IChatAgentMetadata {
   toolUsageCount: number
   totalCreditsUsed: number
   remainingCredits?: number
+}
+
+export interface ISavedBotMessage {
+  id: string
+  sender_id: 'bot'
+  message: string
+  created_at: Date
+  input_tokens?: number
+  output_tokens?: number
+  total_tokens?: number
+  llm_credits?: number
+  tool_credits?: number
+  credits_used?: number
+  tools?: Array<{ name: string; credits: number }>
+}
+
+export interface ISavedUserMessage {
+  id: string
+  sender_id: string
+  message: string
+  created_at: Date
 }
 
 export interface IChatAgentResult {
@@ -72,6 +98,13 @@ export type TChatAgentThinkingStatus =
   | { status: 'thinking'; message?: string }
   | { status: 'calling_tool'; toolName: string; args: Record<string, unknown> }
   | { status: 'tool_response'; toolName: string; result: unknown }
-  | { status: 'done'; response: string; metadata: IChatAgentMetadata }
+  | { status: 'user_message'; savedMessage: ISavedUserMessage }
+  | {
+      status: 'done'
+      response: string
+      messageId?: string
+      savedMessage?: ISavedBotMessage
+      metadata: IChatAgentMetadata
+    }
 
 export type TThinkCallback = (status: TChatAgentThinkingStatus) => void | Promise<void>

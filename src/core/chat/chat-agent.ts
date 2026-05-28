@@ -16,6 +16,8 @@ import type {
   IChatAgentResult,
   IChatAgentOptions,
   IChatIntent,
+  ISavedBotMessage,
+  ISavedUserMessage,
   TChatMessageItem,
   TThinkCallback,
 } from '~/src/core/chat/chat.type'
@@ -54,6 +56,7 @@ export class ChatAgent {
   private static readonly HISTORY_WINDOW = 20
   private static readonly SUMMARIZE_THRESHOLD = 40
   private static readonly RESUMMARY_BATCH = 10
+  private static readonly MAX_REASONING_STEPS = 5
 
   constructor(options: IChatAgentOptions) {
     this.aiService = new AIService()
@@ -114,6 +117,13 @@ export class ChatAgent {
 
     const { combinedMessage, parts } = parseQueryInput(input)
 
+    if (this.persistHistory) {
+      const savedUserMessage = await this.saveUserMessage(combinedMessage)
+      if (savedUserMessage && thinkCallback) {
+        await thinkCallback({ status: 'user_message', savedMessage: savedUserMessage })
+      }
+    }
+
     const context: IChatContext = {
       userId: this.userId,
       message: combinedMessage,
@@ -125,22 +135,20 @@ export class ChatAgent {
 
     // 1. Run intent classification
     const classification = await this.classifyIntent(combinedMessage)
+    logger.info(
+      {
+        userId: this.userId,
+        intent: classification.type,
+        toolName: classification.toolName,
+        provider: this.provider,
+      },
+      '[chat-agent] intent classified',
+    )
     const dynamicInstruction = await this.getDynamicInstruction(context)
 
-    // 2. Direct Tool Routing (Deterministic execution bypass)
-    if (classification.type === 'direct_tool' && classification.toolName && classification.args) {
-      return this.handleDirectToolQuery(
-        classification.toolName,
-        classification.args,
-        combinedMessage,
-        parts,
-        context,
-        dynamicInstruction,
-        thinkCallback,
-      )
-    }
-
-    // 3. Engine-specific reasoning loop execution
+    // Engine-specific reasoning loop execution.
+    // The bigger model handles parameter extraction, tool execution, and response synthesis.
+    // For `direct_tool` classification, getOpenAIToolsConfig/getGeminiToolsConfig narrow the toolset to one.
     if (this.provider === 'openai') {
       return this.queryOpenAI(input, combinedMessage, context, classification, dynamicInstruction, thinkCallback)
     }
@@ -156,15 +164,20 @@ export class ChatAgent {
     if (this.disableClassifier) {
       return { type: 'complex_agent' }
     }
-    const toolNames = this.tools.map((t) => t.name)
-    if (toolNames.length === 0) {
+    if (this.tools.length === 0) {
       return { type: 'general_chat' }
     }
 
+    const directInvokableNames = this.tools.filter((t) => t.allowDirectInvoke !== false).map((t) => t.name)
+
     const toolsDescription = this.tools
       .map((t) => {
+        const directNote =
+          t.allowDirectInvoke === false
+            ? '\nRouting: complex_agent ONLY — this tool needs follow-up LLM reasoning over its result. Do NOT classify as direct_tool.'
+            : ''
         return `Tool Name: "${t.name}"
-Description: ${t.description}
+Description: ${t.description}${directNote}
 Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       })
       .join('\n\n')
@@ -174,8 +187,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     try {
       const jsonText = await this.callIntentClassifierLLM(systemInstruction, message)
       const result = JSON.parse(jsonText) as IChatIntent
-      if (result.type === 'direct_tool' && result.toolName && toolNames.includes(result.toolName)) {
-        return { type: 'direct_tool', toolName: result.toolName, args: result.args || {} }
+      if (result.type === 'direct_tool' && result.toolName && directInvokableNames.includes(result.toolName)) {
+        return { type: 'direct_tool', toolName: result.toolName }
       }
       if (result.type === 'general_chat' || result.type === 'complex_agent') {
         return { type: result.type }
@@ -207,164 +220,6 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       responseMimeType: 'application/json',
     })
     return response.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text || '{}'
-  }
-
-  private async handleDirectToolQuery(
-    toolName: string,
-    args: Record<string, unknown>,
-    combinedMessage: string,
-    parts: Part[],
-    context: IChatContext,
-    dynamicInstruction: string,
-    thinkCallback?: TThinkCallback,
-  ): Promise<IChatAgentResult> {
-    const { responsePayload, cost } = await this.runToolCall({ name: toolName, args }, context, thinkCallback)
-
-    let responseText = ''
-    const directReturnTools = ['manage_expenses', 'create_schedule', 'manage_todos']
-    if (directReturnTools.includes(toolName)) {
-      const payloadStr = typeof responsePayload === 'string' ? responsePayload : JSON.stringify(responsePayload)
-      responseText = payloadStr
-      try {
-        const parsed = JSON.parse(payloadStr)
-        if (parsed && parsed.message) {
-          responseText = parsed.message
-        }
-      } catch {}
-
-      const grandTotalTokens = 0
-      const totalCreditsUsed = cost
-
-      this.history.push({ role: 'user', parts: [{ text: combinedMessage }] })
-      this.history.push({ role: 'model', parts: [{ text: responseText }] })
-
-      if (this.persistHistory) {
-        await this.saveConversationTurn(combinedMessage, responseText, {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          llmCredits: 0,
-          toolCredits: cost,
-          creditsUsed: totalCreditsUsed,
-          tools: this.executedTools,
-        })
-      }
-
-      const metadata: IChatAgentMetadata = {
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        grandTotalTokens: 0,
-        toolUsageCount: 1,
-        totalCreditsUsed,
-        remainingCredits: this.remainingCredits ?? 0,
-      }
-
-      if (thinkCallback) {
-        await thinkCallback({
-          status: 'done',
-          response: responseText,
-          metadata,
-        })
-      }
-
-      return {
-        response: responseText,
-        metadata,
-      }
-    }
-
-    const { responseText: confirmedText, inputTokens, outputTokens } = await this.generateDirectToolConfirmation(
-      toolName,
-      responsePayload,
-      combinedMessage,
-      parts,
-      dynamicInstruction,
-    )
-    responseText = confirmedText
-
-    const grandTotalTokens = inputTokens + outputTokens
-    const llmCredits = grandTotalTokens / this.tokensPerCredit
-    const rawCredits = llmCredits + cost
-    const totalCreditsUsed = Math.ceil(rawCredits)
-
-    this.history.push({ role: 'user', parts: [{ text: combinedMessage }] })
-    this.history.push({ role: 'model', parts: [{ text: responseText }] })
-
-    if (this.persistHistory) {
-      await this.saveConversationTurn(combinedMessage, responseText, {
-        inputTokens,
-        outputTokens,
-        totalTokens: grandTotalTokens,
-        llmCredits,
-        toolCredits: cost,
-        creditsUsed: totalCreditsUsed,
-        tools: this.executedTools,
-      })
-    }
-
-    const metadata: IChatAgentMetadata = {
-      totalInputTokens: inputTokens,
-      totalOutputTokens: outputTokens,
-      grandTotalTokens,
-      toolUsageCount: 1,
-      totalCreditsUsed,
-      remainingCredits: this.remainingCredits ?? 0,
-    }
-
-    if (thinkCallback) {
-      await thinkCallback({
-        status: 'done',
-        response: responseText,
-        metadata,
-      })
-    }
-
-    return {
-      response: responseText,
-      metadata,
-    }
-  }
-
-  private async generateDirectToolConfirmation(
-    toolName: string,
-    responsePayload: unknown,
-    combinedMessage: string,
-    parts: Part[],
-    dynamicInstruction: string,
-  ): Promise<{ responseText: string; inputTokens: number; outputTokens: number }> {
-    const confirmationInstruction = `${dynamicInstruction}\n\nAn action was performed directly for the user. Tool name: "${toolName}". Tool result payload: ${JSON.stringify(responsePayload)}. Confirm this to the user in a friendly natural Thai response.`
-
-    if (this.provider === 'openai' && this.openai) {
-      const response = await this.openai.chat.completions.create({
-        model: envVariables.OPENAI_CHAT_MODEL,
-        messages: [
-          { role: 'system', content: confirmationInstruction },
-          ...this.history.map((h) => ({
-            role: (h.role === 'model' ? 'assistant' : 'user') as 'assistant' | 'user',
-            content: h.parts?.[0]?.text || '',
-          })),
-          { role: 'user', content: combinedMessage },
-        ],
-        temperature: 0.7,
-      })
-      const usage = response.usage
-      return {
-        responseText: response.choices[0]?.message?.content || '',
-        inputTokens: usage?.prompt_tokens || 0,
-        outputTokens: usage?.completion_tokens || 0,
-      }
-    } else {
-      const response = await this.aiService.generate([...this.history, { role: 'user', parts }], {
-        systemInstruction: confirmationInstruction,
-        temperature: 0.7,
-      })
-      const usage = response.usageMetadata
-      return {
-        responseText: response.candidates?.[0]?.content?.parts?.find((p: Part) => p.text)?.text || '',
-        inputTokens: usage?.promptTokenCount || 0,
-        outputTokens: usage?.candidatesTokenCount || 0,
-      }
-    }
   }
 
   // ==========================================
@@ -415,8 +270,9 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       this.history.push({ role: 'user', parts: [{ text: combinedMessage }] })
       this.history.push({ role: 'model', parts: [{ text: finalResponseText }] })
 
+      let savedMessage: ISavedBotMessage | undefined
       if (this.persistHistory) {
-        await this.saveConversationTurn(combinedMessage, finalResponseText, {
+        savedMessage = await this.saveBotMessage(finalResponseText, {
           inputTokens: totalInputTokens,
           outputTokens: totalOutputTokens,
           totalTokens: grandTotalTokens,
@@ -440,6 +296,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         await thinkCallback({
           status: 'done',
           response: finalResponseText,
+          messageId: savedMessage?.id,
+          savedMessage,
           metadata,
         })
       }
@@ -518,6 +376,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     let totalOutputTokens = response.usage?.completion_tokens || 0
     let toolUsageCount = 0
     let toolCredits = 0
+    let step = 0
 
     let assistantMessage = response.choices[0]?.message
     let toolCalls = assistantMessage?.tool_calls
@@ -525,6 +384,27 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     const directReturnTools = ['manage_expenses', 'create_schedule', 'manage_todos']
 
     while (toolCalls && toolCalls.length > 0) {
+      if (step >= ChatAgent.MAX_REASONING_STEPS) {
+        logger.warn(
+          { userId: this.userId, step, maxSteps: ChatAgent.MAX_REASONING_STEPS },
+          '[chat-agent] reasoning loop hit max iterations, forcing summary',
+        )
+        const summaryInstruction = `You have already used ${step} tool-calling rounds and reached the maximum allowed (${ChatAgent.MAX_REASONING_STEPS}). Do NOT call any more tools. Based on the tool results gathered so far in this conversation, write a final answer to the user's original question now in Cloudy's friendly Thai persona. If the information gathered is insufficient to fully answer, apologize politely and tell the user what you found and what remained unclear — but do not call any tool.`
+        response = await this.openai!.chat.completions.create({
+          model: envVariables.OPENAI_CHAT_MODEL,
+          messages: [...openaiMessages, { role: 'system', content: summaryInstruction }],
+          temperature: 0.7,
+        })
+        const summaryUsage = response.usage
+        if (summaryUsage) {
+          totalInputTokens += summaryUsage.prompt_tokens || 0
+          totalOutputTokens += summaryUsage.completion_tokens || 0
+        }
+        assistantMessage = response.choices[0]?.message
+        toolCalls = assistantMessage?.tool_calls
+        break
+      }
+
       if (thinkCallback && assistantMessage?.content) {
         await thinkCallback({ status: 'thinking', message: assistantMessage.content })
       }
@@ -580,6 +460,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
 
       assistantMessage = response.choices[0]?.message
       toolCalls = assistantMessage?.tool_calls
+
+      step += 1
     }
 
     return {
@@ -607,7 +489,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         tools: toolsConfig,
       })
 
-      const { finalResponse, toolUsageCount, toolCredits, totalInputTokens, totalOutputTokens } =
+      let { finalResponse, toolUsageCount, toolCredits, totalInputTokens, totalOutputTokens } =
         await this.runGeminiToolReasoningLoop(
           response,
           contents,
@@ -617,7 +499,29 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
           thinkCallback,
         )
 
-      const finalResponseText = finalResponse.candidates?.[0]?.content?.parts?.find((p: Part) => p.text)?.text || ''
+      let finalResponseText = finalResponse.candidates?.[0]?.content?.parts?.find((p: Part) => p.text)?.text || ''
+
+      if (this.looksLikeRawToolDump(finalResponseText)) {
+        logger.warn(
+          { userId: this.userId, preview: finalResponseText.slice(0, 200) },
+          '[chat-agent] model echoed raw tool output, forcing synthesis pass',
+        )
+        const synthesisInstruction = `${dynamicInstruction}\n\nCRITICAL: The previous turn dumped raw JSON tool output instead of answering the user. You MUST now write a final natural Thai answer in Cloudy's persona based on the tool results in this conversation. Do NOT include any JSON, braces, field names, or URL lists. Do NOT call any tools. Just write prose that answers the user's original question.`
+        const synthesisResponse = await this.aiService.generate(contents, {
+          systemInstruction: synthesisInstruction,
+        })
+        const synthText =
+          synthesisResponse.candidates?.[0]?.content?.parts?.find((p: Part) => p.text)?.text || ''
+        if (synthText && !this.looksLikeRawToolDump(synthText)) {
+          finalResponseText = synthText
+          finalResponse = synthesisResponse
+        }
+        const synthUsage = synthesisResponse.usageMetadata
+        if (synthUsage) {
+          totalInputTokens += synthUsage.promptTokenCount || 0
+          totalOutputTokens += synthUsage.candidatesTokenCount || 0
+        }
+      }
 
       const grandTotalTokens = totalInputTokens + totalOutputTokens
       const llmCredits = grandTotalTokens / this.tokensPerCredit
@@ -627,8 +531,9 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       this.history.push({ role: 'user', parts: [{ text: context.message }] })
       this.history.push({ role: 'model', parts: [{ text: finalResponseText }] })
 
+      let savedMessage: ISavedBotMessage | undefined
       if (this.persistHistory) {
-        await this.saveConversationTurn(context.message, finalResponseText, {
+        savedMessage = await this.saveBotMessage(finalResponseText, {
           inputTokens: totalInputTokens,
           outputTokens: totalOutputTokens,
           totalTokens: grandTotalTokens,
@@ -652,6 +557,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         await thinkCallback({
           status: 'done',
           response: finalResponseText,
+          messageId: savedMessage?.id,
+          savedMessage,
           metadata,
         })
       }
@@ -725,10 +632,28 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     let totalOutputTokens = response.usageMetadata?.candidatesTokenCount || 0
     let toolUsageCount = 0
     let toolCredits = 0
+    let step = 0
 
     const directReturnTools = ['manage_expenses', 'create_schedule', 'manage_todos']
 
     while (this.hasFunctionCalls(response)) {
+      if (step >= ChatAgent.MAX_REASONING_STEPS) {
+        logger.warn(
+          { userId: this.userId, step, maxSteps: ChatAgent.MAX_REASONING_STEPS },
+          '[chat-agent] reasoning loop hit max iterations, forcing summary',
+        )
+        const summaryInstruction = `${dynamicInstruction}\n\nIMPORTANT: You have already used ${step} tool-calling rounds and reached the maximum allowed (${ChatAgent.MAX_REASONING_STEPS}). Do NOT call any more tools. Based on the tool results gathered so far in this conversation, write a final answer to the user's original question now in Cloudy's friendly Thai persona. If the information gathered is insufficient to fully answer, apologize politely and tell the user what you found and what remained unclear — but do not call any tool.`
+        response = await this.aiService.generate(contents, {
+          systemInstruction: summaryInstruction,
+        })
+        const summaryUsage = response.usageMetadata
+        if (summaryUsage) {
+          totalInputTokens += summaryUsage.promptTokenCount || 0
+          totalOutputTokens += summaryUsage.candidatesTokenCount || 0
+        }
+        break
+      }
+
       const modelContent = response.candidates?.[0]?.content
       if (!modelContent) {
         break
@@ -788,6 +713,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         totalInputTokens += stepUsage.promptTokenCount || 0
         totalOutputTokens += stepUsage.candidatesTokenCount || 0
       }
+
+      step += 1
     }
 
     return {
@@ -1108,8 +1035,42 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     }
   }
 
-  private async saveConversationTurn(
-    message: string,
+  async markUserMessageAsFailed(messageId: string, errorMessage: string): Promise<void> {
+    try {
+      await db
+        .collection('chats')
+        .doc(messageId)
+        .update({
+          error: errorMessage.slice(0, 500),
+        })
+    } catch (error) {
+      logger.error({ error, messageId }, 'Failed to mark user message as failed in Firestore')
+    }
+  }
+
+  private async saveUserMessage(message: string): Promise<ISavedUserMessage | undefined> {
+    try {
+      const docRef = db.collection('chats').doc()
+      const createdAt = getUtcTime().toDate()
+      await docRef.set({
+        user_id: this.userId,
+        sender_id: this.userId,
+        message,
+        created_at: createdAt,
+      })
+      return {
+        id: docRef.id,
+        sender_id: this.userId,
+        message,
+        created_at: createdAt,
+      }
+    } catch (error) {
+      logger.error(error, 'Failed to save user message to Firestore')
+      return undefined
+    }
+  }
+
+  private async saveBotMessage(
     responseText: string,
     usage?: {
       inputTokens: number
@@ -1120,19 +1081,15 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       creditsUsed: number
       tools: Array<{ name: string; credits: number }>
     },
-  ): Promise<void> {
+  ): Promise<ISavedBotMessage | undefined> {
+    let savedBotMessage: ISavedBotMessage | undefined
     try {
-      await db.collection('chats').add({
-        user_id: this.userId,
-        sender_id: this.userId,
-        message,
-        created_at: getUtcTime().toDate(),
-      })
-      await db.collection('chats').add({
-        user_id: this.userId,
-        sender_id: 'bot',
+      const botDocRef = db.collection('chats').doc()
+      const botCreatedAt = getUtcTime().toDate()
+      const botData = {
+        sender_id: 'bot' as const,
         message: responseText,
-        created_at: getUtcTime().toDate(),
+        created_at: botCreatedAt,
         ...(usage
           ? {
               input_tokens: usage.inputTokens,
@@ -1144,7 +1101,9 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
               tools: usage.tools,
             }
           : {}),
-      })
+      }
+      savedBotMessage = { id: botDocRef.id, ...botData }
+      await botDocRef.set({ user_id: this.userId, ...botData })
 
       let remaining = 0
       if (usage && usage.creditsUsed > 0) {
@@ -1165,8 +1124,9 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       }
       this.remainingCredits = remaining
     } catch (error) {
-      logger.error(error, 'Failed to save conversation turn and deduct credits to Firestore')
+      logger.error(error, 'Failed to save bot message and deduct credits to Firestore')
     }
+    return savedBotMessage
   }
 
   private async loadMemoriesFromFirestore(): Promise<string> {
@@ -1289,6 +1249,23 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
 
   private hasFunctionCalls(response: GenerateContentResponse): boolean {
     return !!response.candidates?.[0]?.content?.parts?.some((part) => !!part.functionCall)
+  }
+
+  private looksLikeRawToolDump(text: string): boolean {
+    if (!text) return false
+    const trimmed = text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '').trim()
+    if (trimmed.length < 2) return false
+    const startsLikeJson = trimmed.startsWith('{') || trimmed.startsWith('[')
+    if (!startsLikeJson) return false
+    if (/"(?:source|results|query|timestamp)"\s*:/.test(trimmed)) {
+      return true
+    }
+    try {
+      JSON.parse(trimmed)
+      return true
+    } catch {
+      return false
+    }
   }
 
   private getOpenAIToolsConfig(classification: IChatIntent): OpenAI.Chat.Completions.ChatCompletionTool[] {

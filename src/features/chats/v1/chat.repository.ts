@@ -28,6 +28,7 @@ export class ChatRepository {
         tool_credits: data.tool_credits,
         credits_used: data.credits_used,
         tools: data.tools,
+        error: data.error ?? null,
       }
     })
   }

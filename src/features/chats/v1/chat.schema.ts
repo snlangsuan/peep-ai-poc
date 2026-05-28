@@ -79,6 +79,7 @@ export const chatResponseSchema = z.object({
       }),
     )
     .optional(),
+  error: z.string().nullable().optional(),
 })
 
 export const chatItemResponseSchema = z.object({
@@ -88,12 +89,15 @@ export const chatItemResponseSchema = z.object({
 
 export const chatSseEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('queued'), job_id: z.string() }),
+  z.object({ type: z.literal('user_message'), message: chatResponseSchema }),
   z.object({ type: z.literal('thinking'), message: z.string().optional() }),
   z.object({ type: z.literal('calling_tool'), tool_name: z.string(), args: z.record(z.string(), z.unknown()) }),
   z.object({ type: z.literal('tool_response'), tool_name: z.string(), result: z.unknown() }),
   z.object({
     type: z.literal('done'),
     response: z.string(),
+    message_id: z.string().optional(),
+    message: chatResponseSchema.optional(),
     metadata: z.object({
       total_input_tokens: z.number(),
       total_output_tokens: z.number(),
@@ -103,7 +107,7 @@ export const chatSseEventSchema = z.discriminatedUnion('type', [
       remaining_credits: z.number().optional(),
     }),
   }),
-  z.object({ type: z.literal('error'), message: z.string() }),
+  z.object({ type: z.literal('error'), message: z.string(), message_id: z.string().optional() }),
 ])
 
 export const chatActionPayloadSchema = z.object({

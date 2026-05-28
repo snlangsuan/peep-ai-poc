@@ -2,6 +2,7 @@ import { logger } from '#/common/libs/logger.lib'
 import { memoryQueueService } from '#/common/services/queue.service'
 import { sseBroker } from '#/common/services/sse-broker.service'
 import { ChatAgent } from '#/core/chat/chat-agent'
+import { mapRawChatToResponse } from '#/features/chats/v1/chat.mapper'
 import { WebSearchTool } from '#/core/chat/tools/web-search.tool'
 import { ScheduleManagementTool } from '#/core/chat/tools/schedule-management.tool'
 import { TodoManagementTool } from '#/core/chat/tools/todo-management.tool'
@@ -13,8 +14,71 @@ import { CheckSchedulesModule } from '#/worker/schedule/modules/check-schedules.
 import { SendMoodToAllModule } from '#/worker/schedule/modules/send-mood.module'
 import { ScheduleWorker } from '#/worker/schedule/schedule-worker'
 
+import type { TChatAgentThinkingStatus } from '#/core/chat/chat.type'
+
 
 let scheduleWorker: ScheduleWorker | null = null
+
+function handleAgentEvent(userId: string, response: TChatAgentThinkingStatus): void {
+  if (response.status === 'user_message') {
+    logger.info({ userId, messageId: response.savedMessage.id }, '[chat-agent] user message saved')
+    sseBroker.emit(userId, {
+      type: 'user_message',
+      message: mapRawChatToResponse(response.savedMessage),
+    })
+  } else if (response.status === 'thinking') {
+    logger.info({ userId, message: response.message }, '[chat-agent] thinking')
+    sseBroker.emit(userId, { type: 'thinking', message: response.message })
+  } else if (response.status === 'calling_tool') {
+    logger.info({ userId, tool: response.toolName, args: response.args }, '[chat-agent] calling tool')
+    sseBroker.emit(userId, {
+      type: 'calling_tool',
+      tool_name: response.toolName,
+      args: response.args,
+    })
+  } else if (response.status === 'tool_response') {
+    const resultStr = typeof response.result === 'string' ? response.result : JSON.stringify(response.result)
+    logger.info(
+      { userId, tool: response.toolName, result: resultStr.slice(0, 500) },
+      '[chat-agent] tool responded',
+    )
+    sseBroker.emit(userId, {
+      type: 'tool_response',
+      tool_name: response.toolName,
+      result: response.result,
+    })
+  } else if (response.status === 'done') {
+    const message = response.savedMessage ? mapRawChatToResponse(response.savedMessage) : undefined
+    logger.info(
+      {
+        userId,
+        messageId: response.messageId,
+        response: response.response.slice(0, 200),
+        inputTokens: response.metadata.totalInputTokens,
+        outputTokens: response.metadata.totalOutputTokens,
+        totalTokens: response.metadata.grandTotalTokens,
+        toolUsageCount: response.metadata.toolUsageCount,
+        creditsUsed: response.metadata.totalCreditsUsed,
+        remainingCredits: response.metadata.remainingCredits,
+      },
+      '[chat-agent] done',
+    )
+    sseBroker.emit(userId, {
+      type: 'done',
+      response: response.response,
+      message_id: response.messageId,
+      message,
+      metadata: {
+        total_input_tokens: response.metadata.totalInputTokens,
+        total_output_tokens: response.metadata.totalOutputTokens,
+        grand_total_tokens: response.metadata.grandTotalTokens,
+        tool_usage_count: response.metadata.toolUsageCount,
+        total_credits_used: response.metadata.totalCreditsUsed,
+        remaining_credits: response.metadata.remainingCredits,
+      },
+    })
+  }
+}
 
 export function startQueueWorker() {
   logger.info('🚀 Starting background queue worker...')
@@ -38,6 +102,15 @@ export function startQueueWorker() {
     async (payload) => {
       const { userId, content } = payload
 
+      const contentSummary = content.map((c: { type: string; text?: string; file_name?: string; link?: string }) => {
+        if (c.type === 'text') return { type: 'text', text: (c.text || '').slice(0, 200) }
+        if (c.type === 'image') return { type: 'image' }
+        if (c.type === 'file') return { type: 'file', file_name: c.file_name }
+        if (c.type === 'link') return { type: 'link', link: c.link }
+        return c
+      })
+      logger.info({ userId, content: contentSummary }, '[chat-agent] received message')
+
       const agent = new ChatAgent({
         userId,
         persistHistory: true,
@@ -53,41 +126,24 @@ export function startQueueWorker() {
         .addTool(new MoodManagementTool())
         .addTool(new SummaryTool())
 
+      let lastUserMessageId: string | undefined
       try {
-        const result = await agent.query(content, async (response) => {
-          if (response.status === 'thinking') {
-            sseBroker.emit(userId, { type: 'thinking', message: response.message })
-          } else if (response.status === 'calling_tool') {
-            sseBroker.emit(userId, {
-              type: 'calling_tool',
-              tool_name: response.toolName,
-              args: response.args,
-            })
-          } else if (response.status === 'tool_response') {
-            sseBroker.emit(userId, {
-              type: 'tool_response',
-              tool_name: response.toolName,
-              result: response.result,
-            })
-          } else if (response.status === 'done') {
-            sseBroker.emit(userId, {
-              type: 'done',
-              response: response.response,
-              metadata: {
-                total_input_tokens: response.metadata.totalInputTokens,
-                total_output_tokens: response.metadata.totalOutputTokens,
-                grand_total_tokens: response.metadata.grandTotalTokens,
-                tool_usage_count: response.metadata.toolUsageCount,
-                total_credits_used: response.metadata.totalCreditsUsed,
-                remaining_credits: response.metadata.remainingCredits,
-              },
-            })
+        await agent.query(content, async (response) => {
+          if (response.status === 'user_message') {
+            lastUserMessageId = response.savedMessage.id
           }
+          handleAgentEvent(userId, response)
         })
       } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        logger.error({ userId, messageId: lastUserMessageId, err }, '[chat-agent] failed')
+        if (lastUserMessageId) {
+          await agent.markUserMessageAsFailed(lastUserMessageId, errorMessage)
+        }
         sseBroker.emit(userId, {
           type: 'error',
-          message: err instanceof Error ? err.message : String(err),
+          message: errorMessage,
+          message_id: lastUserMessageId,
         })
       }
     },
