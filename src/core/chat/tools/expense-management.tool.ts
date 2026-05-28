@@ -5,6 +5,7 @@ import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class ExpenseManagementTool implements IChatTool {
   readonly name = 'manage_expenses'
+  readonly directReturn = true
   readonly description = 'จัดการบันทึกค่าใช้จ่าย (Expenses) ของผู้ใช้ ทั้งการสร้าง/บันทึกรายได้-รายจ่าย, เรียกดู, แก้ไขข้อมูล, ลบ และแสดงรายงานตามช่วงเวลา (เช่น ค่าใช้จ่ายของวันนี้, เมื่อวาน หรือระบุวันที่)'
   readonly parameters = {
     type: 'OBJECT',

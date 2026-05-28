@@ -12,6 +12,7 @@ import type {
   IChatContext,
   IChatTask,
   IChatTool,
+  IChatSkill,
   IChatAgentMetadata,
   IChatAgentResult,
   IChatAgentOptions,
@@ -47,10 +48,12 @@ export class ChatAgent {
   // Conversational & Tool State
   private history: Content[]
   private tools: IChatTool[] = []
+  private skills: IChatSkill[] = []
   private tasks: IChatTask[] = []
   private lastStepTools = new Set<string>()
   private currentStepTools = new Set<string>()
   private executedTools: Array<{ name: string; credits: number }> = []
+  private usedSkills = new Set<string>()
   private remainingCredits: number | null = null
 
   private static readonly HISTORY_WINDOW = 20
@@ -76,6 +79,7 @@ export class ChatAgent {
     this.tokensPerCredit = options.tokensPerCredit ?? 1000
     this.disableClassifier = options.disableClassifier === true
 
+    this.addTool(this.createTaskCompleteTool())
     if (this.persistMemory) {
       this.addTool(this.createRememberTool())
     }
@@ -100,8 +104,22 @@ export class ChatAgent {
     return this
   }
 
+  /**
+   * Low-level tool registration. Production code should use `addSkill()` instead;
+   * `addTool()` is reserved for internal virtual tools (task_complete, remember_user_fact)
+   * and for unit tests that exercise tool-level behavior directly.
+   */
   addTool(tool: IChatTool): this {
     this.tools.push(tool)
+    return this
+  }
+
+  addSkill(skill: IChatSkill): this {
+    this.skills.push(skill)
+    for (const tool of skill.tools) {
+      tool.skillName = skill.name
+      this.tools.push(tool)
+    }
     return this
   }
 
@@ -264,7 +282,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
 
       const grandTotalTokens = totalInputTokens + totalOutputTokens
       const llmCredits = grandTotalTokens / this.tokensPerCredit
-      const rawCredits = llmCredits + toolCredits
+      const skillUsage = this.computeSkillUsage()
+      const rawCredits = llmCredits + toolCredits + skillUsage.overhead
       const totalCreditsUsed = Math.ceil(rawCredits)
 
       this.history.push({ role: 'user', parts: [{ text: combinedMessage }] })
@@ -278,8 +297,10 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
           totalTokens: grandTotalTokens,
           llmCredits,
           toolCredits,
+          skillCredits: skillUsage.overhead,
           creditsUsed: totalCreditsUsed,
           tools: this.executedTools,
+          skills: skillUsage.breakdown,
         })
       }
 
@@ -290,6 +311,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         toolUsageCount,
         totalCreditsUsed,
         remainingCredits: this.remainingCredits ?? 0,
+        skillsUsed: skillUsage.breakdown,
       }
 
       if (thinkCallback) {
@@ -381,7 +403,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     let assistantMessage = response.choices[0]?.message
     let toolCalls = assistantMessage?.tool_calls
 
-    const directReturnTools = ['manage_expenses', 'create_schedule', 'manage_todos']
+    const directReturnTools = this.getDirectReturnToolNames()
 
     while (toolCalls && toolCalls.length > 0) {
       if (step >= ChatAgent.MAX_REASONING_STEPS) {
@@ -405,9 +427,13 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         break
       }
 
-      if (thinkCallback && assistantMessage?.content) {
-        await thinkCallback({ status: 'thinking', message: assistantMessage.content })
+      const pendingToolNames: string[] = []
+      for (const call of toolCalls) {
+        if (call.type === 'function') {
+          pendingToolNames.push(call.function.name)
+        }
       }
+      await this.emitPreToolThought(assistantMessage?.content, pendingToolNames, thinkCallback)
 
       this.startNewToolExecutionStep()
       openaiMessages.push({
@@ -525,7 +551,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
 
       const grandTotalTokens = totalInputTokens + totalOutputTokens
       const llmCredits = grandTotalTokens / this.tokensPerCredit
-      const rawCredits = llmCredits + toolCredits
+      const skillUsage = this.computeSkillUsage()
+      const rawCredits = llmCredits + toolCredits + skillUsage.overhead
       const totalCreditsUsed = Math.ceil(rawCredits)
 
       this.history.push({ role: 'user', parts: [{ text: context.message }] })
@@ -539,8 +566,10 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
           totalTokens: grandTotalTokens,
           llmCredits,
           toolCredits,
+          skillCredits: skillUsage.overhead,
           creditsUsed: totalCreditsUsed,
           tools: this.executedTools,
+          skills: skillUsage.breakdown,
         })
       }
 
@@ -551,6 +580,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         toolUsageCount,
         totalCreditsUsed,
         remainingCredits: this.remainingCredits ?? 0,
+        skillsUsed: skillUsage.breakdown,
       }
 
       if (thinkCallback) {
@@ -634,7 +664,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     let toolCredits = 0
     let step = 0
 
-    const directReturnTools = ['manage_expenses', 'create_schedule', 'manage_todos']
+    const directReturnTools = this.getDirectReturnToolNames()
 
     while (this.hasFunctionCalls(response)) {
       if (step >= ChatAgent.MAX_REASONING_STEPS) {
@@ -665,12 +695,15 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         .join('')
         .trim()
 
-      if (thinkCallback && thinkingText) {
-        await thinkCallback({ status: 'thinking', message: thinkingText })
+      const functionCallParts = (modelContent.parts || []).filter((part: Part) => !!part.functionCall)
+      const pendingToolNames: string[] = []
+      for (const part of functionCallParts) {
+        const name = part.functionCall?.name
+        if (name) pendingToolNames.push(name)
       }
+      await this.emitPreToolThought(thinkingText, pendingToolNames, thinkCallback)
 
       this.startNewToolExecutionStep()
-      const functionCallParts = (modelContent.parts || []).filter((part: Part) => !!part.functionCall)
 
       const hasDirectTool = functionCallParts.some(
         (part) => part.functionCall?.name && directReturnTools.includes(part.functionCall.name),
@@ -786,6 +819,26 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     this.lastStepTools.clear()
     this.currentStepTools.clear()
     this.executedTools = []
+    this.usedSkills.clear()
+  }
+
+  private computeSkillUsage(): {
+    overhead: number
+    breakdown: Array<{ name: string; overheadCredits: number; toolCount: number }>
+  } {
+    const breakdown: Array<{ name: string; overheadCredits: number; toolCount: number }> = []
+    let overhead = 0
+    for (const name of this.usedSkills) {
+      const skill = this.skills.find((s) => s.name === name)
+      const overheadCredits = skill?.creditCost ?? 0
+      const toolCount = this.executedTools.filter((entry) => {
+        const tool = this.tools.find((t) => t.name === entry.name)
+        return tool?.skillName === name
+      }).length
+      overhead += overheadCredits
+      breakdown.push({ name, overheadCredits, toolCount })
+    }
+    return { overhead, breakdown }
   }
 
   private serializeToolArgs(args: Record<string, unknown>): string {
@@ -844,6 +897,9 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     const executedTool = this.tools.find((t: IChatTool): boolean => t.name === call.name)
     if (executedTool && executedTool.creditCost) {
       cost = executedTool.creditCost
+    }
+    if (executedTool?.skillName) {
+      this.usedSkills.add(executedTool.skillName)
     }
     this.executedTools.push({ name: call.name, credits: cost })
     return { responsePayload, cost }
@@ -1078,8 +1134,10 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       totalTokens: number
       llmCredits: number
       toolCredits: number
+      skillCredits: number
       creditsUsed: number
       tools: Array<{ name: string; credits: number }>
+      skills: Array<{ name: string; overheadCredits: number; toolCount: number }>
     },
   ): Promise<ISavedBotMessage | undefined> {
     let savedBotMessage: ISavedBotMessage | undefined
@@ -1097,8 +1155,10 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
               total_tokens: usage.totalTokens,
               llm_credits: usage.llmCredits,
               tool_credits: usage.toolCredits,
+              skill_credits: usage.skillCredits,
               credits_used: usage.creditsUsed,
               tools: usage.tools,
+              skills_used: usage.skills,
             }
           : {}),
       }
@@ -1149,6 +1209,57 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
   // ==========================================
   // Private Mappers & Helper Builders
   // ==========================================
+
+  private getDirectReturnToolNames(): string[] {
+    return this.tools.filter((t) => t.directReturn === true).map((t) => t.name)
+  }
+
+  private buildAutoThought(pendingToolNames: string[]): string {
+    if (pendingToolNames.length === 0) return ''
+    const labels = pendingToolNames.map((name) => {
+      const tool = this.tools.find((t) => t.name === name)
+      const skillLabel = tool?.skillName ? `${tool.skillName}:${name}` : name
+      return skillLabel
+    })
+    return `กำลังเรียกใช้: ${labels.join(', ')}`
+  }
+
+  private async emitPreToolThought(
+    llmText: string | null | undefined,
+    pendingToolNames: string[],
+    thinkCallback?: TThinkCallback,
+  ): Promise<void> {
+    if (!thinkCallback) return
+    const thoughtMessage = (llmText && llmText.trim()) || this.buildAutoThought(pendingToolNames)
+    if (thoughtMessage) {
+      await thinkCallback({ status: 'thinking', message: thoughtMessage })
+    }
+  }
+
+  private createTaskCompleteTool(): IChatTool {
+    return {
+      name: 'task_complete',
+      description:
+        'Call this tool ONLY when you have fully completed the user\'s request and want to deliver the final answer. The `message` parameter is the natural-language reply that will be shown to the user verbatim. Do NOT call this tool if more tool calls are still needed.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          message: {
+            type: 'STRING',
+            description: 'The final natural-language reply to send to the user.',
+          },
+        },
+        required: ['message'],
+      },
+      execute: async (args: Record<string, unknown>): Promise<string> => {
+        const message = typeof args.message === 'string' ? args.message : ''
+        return JSON.stringify({ message })
+      },
+      creditCost: 0,
+      allowDirectInvoke: false,
+      directReturn: true,
+    }
+  }
 
   private createRememberTool(): IChatTool {
     return {
@@ -1243,8 +1354,20 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       }
     }
 
-    // Compose: Persona → System Instruction → User Profile → Memories → Active Task Skills → Current Time
-    return `${this.persona}\n\n${this.systemInstruction}${userProfileText}${memoriesText}${taskSkillsText}\n\nCurrent Thai local time is ${nowStr}.`
+    // Registered Skill Catalog Injection — always inject every registered skill's instruction
+    let skillsCatalogText = ''
+    if (this.skills.length > 0) {
+      const blocks = this.skills
+        .map((skill) => {
+          const desc = skill.description ? `${skill.description}\n\n` : ''
+          return `═══ ${skill.name} ═══\n${desc}${skill.instruction}`
+        })
+        .join('\n\n')
+      skillsCatalogText = `\n\nAvailable Skills (capabilities you have access to via tool calls):\n\n${blocks}`
+    }
+
+    // Compose: Persona → System Instruction → User Profile → Memories → Active Task Skills → Skill Catalog → Current Time
+    return `${this.persona}\n\n${this.systemInstruction}${userProfileText}${memoriesText}${taskSkillsText}${skillsCatalogText}\n\nCurrent Thai local time is ${nowStr}.`
   }
 
   private hasFunctionCalls(response: GenerateContentResponse): boolean {

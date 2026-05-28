@@ -5,6 +5,7 @@ import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class TodoManagementTool implements IChatTool {
   readonly name = 'manage_todos'
+  readonly directReturn = true
   readonly description = 'จัดการรายการสิ่งที่ต้องทำ (Todo List) ทั้งสร้างใหม่, เรียกดู, แก้ไขหัวข้อหรือทำเครื่องหมายเสร็จสิ้น, ลบ และแสดงรายการทั้งหมด (รองรับ Pagination แสดงทีละ 10 รายการ และปุ่มถัดไป/ก่อนหน้า)'
   readonly parameters = {
     type: 'OBJECT',

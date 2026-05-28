@@ -37,6 +37,28 @@ export interface IChatTool {
    * Defaults to true.
    */
   allowDirectInvoke?: boolean
+  /**
+   * Name of the skill this tool belongs to. Set automatically by ChatAgent.addSkill().
+   * Used for credit-tracking and skill-overhead accounting.
+   */
+  skillName?: string
+  /**
+   * If true, the tool's response is returned directly to the user as the final answer
+   * (the reasoning loop exits without one more LLM synthesis pass).
+   * The tool MUST return a JSON string with a `message` field (or a plain string).
+   */
+  directReturn?: boolean
+}
+
+export interface IChatSkill {
+  name: string
+  description: string
+  instruction: string
+  tools: IChatTool[]
+  /** Overhead credit charged once per query if any tool under this skill is invoked. */
+  creditCost?: number
+  allowDirectInvoke?: boolean
+  keywords?: string[]
 }
 
 export interface IChatAgentMetadata {
@@ -46,6 +68,7 @@ export interface IChatAgentMetadata {
   toolUsageCount: number
   totalCreditsUsed: number
   remainingCredits?: number
+  skillsUsed?: Array<{ name: string; overheadCredits: number; toolCount: number }>
 }
 
 export interface ISavedBotMessage {
@@ -58,8 +81,10 @@ export interface ISavedBotMessage {
   total_tokens?: number
   llm_credits?: number
   tool_credits?: number
+  skill_credits?: number
   credits_used?: number
   tools?: Array<{ name: string; credits: number }>
+  skills_used?: Array<{ name: string; overheadCredits: number; toolCount: number }>
 }
 
 export interface ISavedUserMessage {

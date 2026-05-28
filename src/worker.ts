@@ -3,13 +3,15 @@ import { memoryQueueService } from '#/common/services/queue.service'
 import { sseBroker } from '#/common/services/sse-broker.service'
 import { ChatAgent } from '#/core/chat/chat-agent'
 import { mapRawChatToResponse } from '#/features/chats/v1/chat.mapper'
-import { WebSearchTool } from '#/core/chat/tools/web-search.tool'
-import { ScheduleManagementTool } from '#/core/chat/tools/schedule-management.tool'
-import { TodoManagementTool } from '#/core/chat/tools/todo-management.tool'
-import { ExpenseManagementTool } from '#/core/chat/tools/expense-management.tool'
-import { FortuneTellingTool } from '#/core/chat/tools/fortune-telling.tool'
-import { MoodManagementTool } from '#/core/chat/tools/mood-management.tool'
-import { SummaryTool } from '#/core/chat/tools/summary.tool'
+import {
+  createWebSearchSkill,
+  createScheduleManagementSkill,
+  createTodoManagementSkill,
+  createExpenseManagementSkill,
+  createFortuneTellingSkill,
+  createMoodManagementSkill,
+  createSummarySkill,
+} from '#/core/chat/skills'
 import { CheckSchedulesModule } from '#/worker/schedule/modules/check-schedules.module'
 import { SendMoodToAllModule } from '#/worker/schedule/modules/send-mood.module'
 import { ScheduleWorker } from '#/worker/schedule/schedule-worker'
@@ -42,11 +44,6 @@ function handleAgentEvent(userId: string, response: TChatAgentThinkingStatus): v
       { userId, tool: response.toolName, result: resultStr.slice(0, 500) },
       '[chat-agent] tool responded',
     )
-    sseBroker.emit(userId, {
-      type: 'tool_response',
-      tool_name: response.toolName,
-      result: response.result,
-    })
   } else if (response.status === 'done') {
     const message = response.savedMessage ? mapRawChatToResponse(response.savedMessage) : undefined
     logger.info(
@@ -118,13 +115,13 @@ export function startQueueWorker() {
         // persona: DEFAULT_PERSONA,           // ← เลือก persona ที่นี่ในอนาคต
         // systemInstruction: AGENT_SYSTEM_INSTRUCTION, // ← override กฎการทำงานที่นี่
       })
-        .addTool(new WebSearchTool())
-        .addTool(new ScheduleManagementTool())
-        .addTool(new TodoManagementTool())
-        .addTool(new ExpenseManagementTool())
-        .addTool(new FortuneTellingTool())
-        .addTool(new MoodManagementTool())
-        .addTool(new SummaryTool())
+        .addSkill(createWebSearchSkill())
+        .addSkill(createScheduleManagementSkill())
+        .addSkill(createTodoManagementSkill())
+        .addSkill(createExpenseManagementSkill())
+        .addSkill(createFortuneTellingSkill())
+        .addSkill(createMoodManagementSkill())
+        .addSkill(createSummarySkill())
 
       let lastUserMessageId: string | undefined
       try {

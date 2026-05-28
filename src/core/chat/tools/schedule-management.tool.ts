@@ -5,6 +5,7 @@ import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class ScheduleManagementTool implements IChatTool {
   readonly name = 'manage_schedules'
+  readonly directReturn = true
   readonly description = 'จัดการกำหนดการแจ้งเตือน (Schedule) ของผู้ใช้ ทั้งการสร้าง, เรียกดู, แก้ไข, ลบ หรือแสดงรายการทั้งหมด สามารถใช้คำสั่งค้นหาตามเวลาได้'
   readonly parameters = {
     type: 'OBJECT',
