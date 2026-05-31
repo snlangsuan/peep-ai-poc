@@ -37,8 +37,70 @@ const baseChatMessageActionContentSchema = z.object({
 
 const baseChatMessageMoodCardContentSchema = z.object({
   type: z.literal('mood_card'),
-  options: z.array(z.string()),
-  selected_mood: z.string().nullable().optional(),
+  title: z.string(),
+  options: z.array(
+    z.object({
+      id: z.enum(['great', 'good', 'okay', 'low', 'bad']),
+      link: z.string(),
+    }),
+  ),
+})
+
+const baseChatMessageMoodResultContentSchema = z.object({
+  type: z.literal('mood_result'),
+  title: z.string(),
+  created_at: z.string(),
+  mood: z.enum(['great', 'good', 'okay', 'low', 'bad']),
+  note: z.string().optional().nullable(),
+  message: z.string(),
+})
+
+const baseChatMessageScheduleContentSchema = z.object({
+  type: z.literal('schedule'),
+  title: z.string(),
+  subtitle: z.string(),
+  created_at: z.string(),
+  items: z.array(
+    z.object({
+      uuid: z.string(),
+      title: z.string(),
+      scheduled_at: z.string(),
+      created_at: z.string(),
+    }),
+  ),
+})
+
+const baseChatMessageExpenseContentSchema = z.object({
+  type: z.literal('expense'),
+  title: z.string(),
+  subtitle: z.string(),
+  created_at: z.string(),
+  items: z.array(
+    z.object({
+      uuid: z.string(),
+      subject: z.string(),
+      amount: z.number(),
+      category: z.enum(['food&drink', 'transport', 'shopping', 'bills', 'work', 'other']),
+      date: z.string(),
+      created_at: z.string(),
+    }),
+  ),
+  total: z.number(),
+})
+
+const baseChatMessageTodoContentSchema = z.object({
+  type: z.literal('todo'),
+  title: z.string(),
+  subtitle: z.string(),
+  created_at: z.string(),
+  items: z.array(
+    z.object({
+      uuid: z.string(),
+      title: z.string(),
+      completed: z.boolean(),
+      created_at: z.string(),
+    }),
+  ),
 })
 
 export const chatMessageInputContentSchema = z.discriminatedUnion('type', [
@@ -53,6 +115,10 @@ export const chatMessageResponseContentSchema = z.discriminatedUnion('type', [
   baseChatMessageImageContentSchema,
   baseChatMessageActionContentSchema,
   baseChatMessageMoodCardContentSchema,
+  baseChatMessageMoodResultContentSchema,
+  baseChatMessageScheduleContentSchema,
+  baseChatMessageExpenseContentSchema,
+  baseChatMessageTodoContentSchema,
 ])
 
 export const chatCreatePayloadSchema = z.object({
@@ -68,14 +134,24 @@ export const chatResponseSchema = z.object({
   input_tokens: z.number().optional(),
   output_tokens: z.number().optional(),
   total_tokens: z.number().optional(),
-  llm_credits: z.number().optional(),
-  tool_credits: z.number().optional(),
-  credits_used: z.number().optional(),
+  llm_credits: z.number().int().optional(),
+  tool_credits: z.number().int().optional(),
+  skill_credits: z.number().int().optional(),
+  credits_used: z.number().int().optional(),
   tools: z
     .array(
       z.object({
         name: z.string(),
         credits: z.number(),
+      }),
+    )
+    .optional(),
+  skills_used: z
+    .array(
+      z.object({
+        name: z.string(),
+        overhead_credits: z.number(),
+        tool_count: z.number(),
       }),
     )
     .optional(),
@@ -106,22 +182,13 @@ export const chatItemResponseSchema = z.object({
 export const chatSseEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('queued'), job_id: z.string() }),
   z.object({ type: z.literal('user_message'), message: chatResponseSchema }),
+  z.object({ type: z.literal('bot_message'), message: chatResponseSchema }),
   z.object({ type: z.literal('thinking'), message: z.string().optional() }),
   z.object({ type: z.literal('calling_tool'), tool_name: z.string(), args: z.record(z.string(), z.unknown()) }),
   z.object({ type: z.literal('tool_response'), tool_name: z.string(), result: z.unknown() }),
   z.object({
     type: z.literal('done'),
-    response: z.string(),
-    message_id: z.string().optional(),
-    message: chatResponseSchema.optional(),
-    metadata: z.object({
-      total_input_tokens: z.number(),
-      total_output_tokens: z.number(),
-      grand_total_tokens: z.number(),
-      tool_usage_count: z.number(),
-      total_credits_used: z.number(),
-      remaining_credits: z.number().optional(),
-    }),
+    message: chatResponseSchema,
   }),
   z.object({
     type: z.literal('error'),
@@ -140,6 +207,15 @@ export const chatActionPayloadSchema = z.object({
 export const chatMoodUpdatePayloadSchema = z.object({
   messageId: z.string(),
   mood: z.string(),
+})
+
+export const chatMoodLinkQuerySchema = z.object({
+  option: z.enum(['great', 'good', 'okay', 'low', 'bad']),
+  sid: z.string().min(1),
+})
+
+export const chatMoodSendPayloadSchema = z.object({
+  to: z.array(z.string().min(1)).min(1),
 })
 
 export const chatFeedbackPayloadSchema = z.object({

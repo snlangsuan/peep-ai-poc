@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { successResponseSchema } from '#/common/schemas/response.schema'
+import { pushBotTodoSavedMessage } from '#/features/chats/v1/todo-notify.helper'
 import { todoResponseSchema, todoItemResponseSchema } from '#/features/todos/v1/todo.schema'
 
 import type { Bindings, JsonInputSchema, ParamInputSchema, QueryInputSchema, Variables } from '#/common/types/app.type'
@@ -33,6 +34,9 @@ export class TodoController {
     const userId = c.get('user_id')
     const body = c.req.valid('json')
     const result = await this.service.create(userId, body)
+
+    void pushBotTodoSavedMessage(userId, [result])
+
     return c.json<TTodoResponse>(todoResponseSchema.parse(result))
   }
 
@@ -72,7 +76,10 @@ export class TodoController {
     const userId = c.get('user_id')
     const { id } = c.req.valid('param')
     const body = c.req.valid('json')
-    await this.service.update(userId, id, body)
+    const updated = await this.service.update(userId, id, body)
+
+    void pushBotTodoSavedMessage(userId, [updated])
+
     return c.json<TSuccessResponse>(successResponseSchema.parse({}))
   }
 

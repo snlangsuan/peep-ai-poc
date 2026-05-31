@@ -1,16 +1,18 @@
 import { streamSSE } from 'hono/streaming'
 
+import { logger } from '#/common/libs/logger.lib'
 import { successResponseSchema } from '#/common/schemas/response.schema'
 import { sseBroker } from '#/common/services/sse-broker.service'
 import { chatItemResponseSchema } from '#/features/chats/v1/chat.schema'
 import { mapRawChatToResponse } from '#/features/chats/v1/chat.mapper'
+import { createMoodCardChat, pushBotMoodResultMessage } from '#/features/chats/v1/mood-card.helper'
 import { db } from '#/common/libs/firebase.lib'
 import { getUtcTime, getLocalTime } from '#/common/utils/datetime.util'
 
 import type { Bindings, JsonInputSchema, QueryInputSchema, Variables } from '#/common/types/app.type'
 import type { TSuccessResponse } from '#/common/types/response.type'
 import type { ChatService } from '#/features/chats/v1/chat.service'
-import type { TChatCreatePayload, TChatFilterPayload, TChatItemResponse, TChatActionPayload, TChatMoodUpdatePayload, TChatFeedbackPayload } from '#/features/chats/v1/chat.type'
+import type { TChatCreatePayload, TChatFilterPayload, TChatItemResponse, TChatActionPayload, TChatMoodUpdatePayload, TChatMoodLinkQuery, TChatMoodSendPayload, TChatFeedbackPayload } from '#/features/chats/v1/chat.type'
 import type { Context } from 'hono'
 
 export class ChatController {
@@ -163,7 +165,7 @@ export class ChatController {
         .get()
 
       if (!existingQuery.empty) {
-        return c.json({ error: 'วันนี้คุณได้บันทึกอารมณ์ไปแล้วจ้า! ☁️✨' }, 400)
+        return c.json({ error: 'วันนี้คุณบันทึกอารมณ์ไปแล้ว ☁️✨' }, 400)
       }
 
       // Add to user_moods directly
@@ -172,7 +174,7 @@ export class ChatController {
         uuid: moodDocRef.id,
         user_id: userId,
         mood,
-        note: 'บันทึกอารมณ์ผ่านหน้าแรกประจำวันจ้า ☁️✨',
+        note: null,
         date: dateStr,
         created_at: now,
       })
@@ -180,7 +182,7 @@ export class ChatController {
       return c.json<TSuccessResponse>(
         successResponseSchema.parse({
           success: true,
-          message: 'อัปเดตอารมณ์เรียบร้อยแล้วจ้า!',
+          message: 'อัปเดตอารมณ์เรียบร้อยแล้ว',
         }),
       )
     }
@@ -198,29 +200,20 @@ export class ChatController {
       return c.json({ error: 'You do not have permission to update this message.' }, 403)
     }
 
-    const messageStr = data.message || ''
-    if (!messageStr.startsWith('{') || !messageStr.endsWith('}')) {
-      return c.json({ error: 'Message is not an interactive card.' }, 400)
-    }
-
-    let parsed: any
-    try {
-      parsed = JSON.parse(messageStr)
-    } catch {
-      return c.json({ error: 'Failed to parse card data.' }, 400)
-    }
-
-    if (parsed.type !== 'mood_card') {
+    const content = Array.isArray(data.content) ? (data.content as Array<{ type?: string }>) : []
+    const hasMoodCard = content.some((c) => c?.type === 'mood_card')
+    if (!hasMoodCard) {
       return c.json({ error: 'Message is not a mood card.' }, 400)
     }
 
-    if (parsed.selected_mood !== null && parsed.selected_mood !== undefined) {
+    if (data.mood_used === true) {
       return c.json({ error: 'You have already submitted your mood for this card.' }, 400)
     }
 
-    parsed.selected_mood = mood
     await docRef.update({
-      message: JSON.stringify(parsed),
+      mood_used: true,
+      mood_selected: mood,
+      mood_selected_at: now,
     })
 
     const moodDocRef = db.collection('user_moods').doc()
@@ -228,7 +221,7 @@ export class ChatController {
       uuid: moodDocRef.id,
       user_id: userId,
       mood,
-      note: 'บันทึกอารมณ์ผ่านการกดการ์ดประจำวันจ้า ☁️✨',
+      note: null,
       date: dateStr,
       created_at: now,
     })
@@ -237,6 +230,92 @@ export class ChatController {
       successResponseSchema.parse({
         success: true,
         message: 'อัปเดตอารมณ์เรียบร้อยแล้วจ้า!',
+      }),
+    )
+  }
+
+  sendMoodCard = async <
+    E extends { Bindings: Bindings; Variables: Variables },
+    P extends string,
+    I extends JsonInputSchema<TChatMoodSendPayload>,
+  >(
+    c: Context<E, P, I>,
+  ): Promise<Response> => {
+    const { to } = c.req.valid('json')
+    await Promise.all(to.map((userId) => createMoodCardChat(userId)))
+    return c.json<TSuccessResponse>(successResponseSchema.parse({ success: true }))
+  }
+
+  recordMoodByLink = async <
+    E extends { Bindings: Bindings; Variables: Variables },
+    P extends string,
+    I extends QueryInputSchema<TChatMoodLinkQuery>,
+  >(
+    c: Context<E, P, I>,
+  ): Promise<Response> => {
+    const { option, sid } = c.req.valid('query')
+    logger.info({ option, sid }, '[mood-link] click received')
+
+    const snapshot = await db.collection('chats').where('mood_sid', '==', sid).limit(1).get()
+    if (snapshot.empty) {
+      logger.info({ sid }, '[mood-link] sid not found in chats collection')
+      return c.json({ error: 'ลิงก์ไม่ถูกต้องหรือหมดอายุแล้ว ☁️' }, 404)
+    }
+
+    const doc = snapshot.docs[0]!
+    const now = getUtcTime().toDate()
+
+    // Atomic claim: read-check-update inside a transaction so concurrent
+    // requests for the same sid can't both pass the `mood_used` check.
+    const claim = await db.runTransaction(async (tx) => {
+      const fresh = await tx.get(doc.ref)
+      const freshData = fresh.data()
+      if (!freshData) return { status: 'gone' as const }
+      if (freshData.mood_used === true) {
+        return { status: 'already_used' as const, userId: freshData.user_id as string }
+      }
+      tx.update(doc.ref, {
+        mood_used: true,
+        mood_selected: option,
+        mood_selected_at: now,
+      })
+      return { status: 'claimed' as const, userId: freshData.user_id as string }
+    })
+
+    if (claim.status === 'gone') {
+      logger.info({ sid }, '[mood-link] doc disappeared during transaction')
+      return c.json({ error: 'ลิงก์ไม่ถูกต้องหรือหมดอายุแล้ว ☁️' }, 404)
+    }
+    if (claim.status === 'already_used') {
+      logger.info({ sid, userId: claim.userId, option }, '[mood-link] already used — skip push')
+      return c.json({ error: 'คุณบันทึกอารมณ์จากการ์ดใบนี้ไปแล้ว ☁️✨' }, 409)
+    }
+
+    logger.info({ sid, userId: claim.userId, option }, '[mood-link] claimed, will generate + push reply')
+
+    const userId = claim.userId
+    const dateStr = getLocalTime().format('YYYY-MM-DD')
+
+    const moodDocRef = db.collection('user_moods').doc()
+    await moodDocRef.set({
+      uuid: moodDocRef.id,
+      user_id: userId,
+      mood: option,
+      note: null,
+      date: dateStr,
+      created_at: now,
+    })
+
+    await pushBotMoodResultMessage(userId, {
+      emotion: option,
+      note: null,
+      createdAt: now,
+    })
+
+    return c.json<TSuccessResponse>(
+      successResponseSchema.parse({
+        success: true,
+        message: 'บันทึกอารมณ์เรียบร้อยแล้ว ขอบคุณ ☁️',
       }),
     )
   }
@@ -271,7 +350,7 @@ export class ChatController {
     return c.json<TSuccessResponse>(
       successResponseSchema.parse({
         success: true,
-        message: 'อัปเดต feedback เรียบร้อยแล้วจ้า!',
+        message: 'อัปเดต feedback เรียบร้อยแล้ว',
       }),
     )
   }

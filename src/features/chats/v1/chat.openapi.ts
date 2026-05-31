@@ -100,6 +100,43 @@ export const updateMoodDoc: ReturnType<typeof describeRoute> = describeRoute({
   },
 })
 
+export const sendMoodCardDoc: ReturnType<typeof describeRoute> = describeRoute({
+  tags: [ERouteTag.CHAT],
+  summary: 'Send mood card chat to selected users (testing)',
+  description:
+    'Pushes a daily mood-card chat bubble to each user listed in the `to` array. Each user receives a fresh card with a unique sid; the sid backs the one-time click links inside the card. Intended for UI testing without waiting for the 6 PM cron.',
+  // security: [{ ApiKeyAuth: [] }],
+  responses: {
+    200: {
+      description: 'Mood cards successfully created for all listed users',
+      content: {
+        'application/json': {
+          schema: resolver(successSchema),
+        },
+      },
+    },
+    ...DEFAULT_RESPONSE,
+  },
+})
+
+export const recordMoodByLinkDoc: ReturnType<typeof describeRoute> = describeRoute({
+  tags: [ERouteTag.CHAT],
+  summary: 'Record mood from card link click (public)',
+  description:
+    'Public endpoint hit when the user clicks an option link inside a mood card. Looks up the card by `sid`, validates it has not been used, records the mood in `user_moods`, and marks the card consumed. Returns 404 for unknown/expired sid and 409 if the card was already used.',
+  responses: {
+    200: {
+      description: 'Mood recorded successfully',
+      content: {
+        'application/json': {
+          schema: resolver(successSchema),
+        },
+      },
+    },
+    ...DEFAULT_RESPONSE,
+  },
+})
+
 export const updateFeedbackDoc: ReturnType<typeof describeRoute> = describeRoute({
   tags: [ERouteTag.CHAT],
   summary: 'Update feedback (like/dislike) for a chat message',

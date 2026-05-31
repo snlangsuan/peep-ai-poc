@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { successResponseSchema } from '#/common/schemas/response.schema'
+import { pushBotScheduleCreatedMessage } from '#/features/chats/v1/schedule-notify.helper'
 import { scheduleResponseSchema, scheduleItemResponseSchema } from '#/features/schedules/v1/schedule.schema'
 
 import type { Bindings, JsonInputSchema, ParamInputSchema, QueryInputSchema, Variables } from '#/common/types/app.type'
@@ -33,6 +34,9 @@ export class ScheduleController {
     const userId = c.get('user_id')
     const body = c.req.valid('json')
     const result = await this.service.create(userId, body)
+
+    void pushBotScheduleCreatedMessage(userId, [result])
+
     return c.json<TScheduleResponse>(scheduleResponseSchema.parse(result))
   }
 
@@ -72,7 +76,10 @@ export class ScheduleController {
     const userId = c.get('user_id')
     const { id } = c.req.valid('param')
     const body = c.req.valid('json')
-    await this.service.update(userId, id, body)
+    const updated = await this.service.update(userId, id, body)
+
+    void pushBotScheduleCreatedMessage(userId, [updated])
+
     return c.json<TSuccessResponse>(successResponseSchema.parse({}))
   }
 

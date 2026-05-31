@@ -60,20 +60,9 @@ function handleAgentEvent(userId: string, response: TChatAgentThinkingStatus): v
       },
       '[chat-agent] done',
     )
-    sseBroker.emit(userId, {
-      type: 'done',
-      response: response.response,
-      message_id: response.messageId,
-      message,
-      metadata: {
-        total_input_tokens: response.metadata.totalInputTokens,
-        total_output_tokens: response.metadata.totalOutputTokens,
-        grand_total_tokens: response.metadata.grandTotalTokens,
-        tool_usage_count: response.metadata.toolUsageCount,
-        total_credits_used: response.metadata.totalCreditsUsed,
-        remaining_credits: response.metadata.remainingCredits,
-      },
-    })
+    if (message) {
+      sseBroker.emit(userId, { type: 'done', message })
+    }
   }
 }
 

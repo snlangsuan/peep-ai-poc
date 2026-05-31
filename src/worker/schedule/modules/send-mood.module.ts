@@ -1,5 +1,6 @@
 import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
+import { createMoodCardChat } from '#/features/chats/v1/mood-card.helper'
 
 import type { IScheduleModule } from '#/worker/schedule/schedule.type'
 
@@ -38,23 +39,11 @@ export class SendMoodToAllModule implements IScheduleModule {
       logger.info({ totalUsers: users.length }, '💬 Sending daily mood survey to users...')
 
       for (const user of users) {
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-        console.log('💬 [DAILY MOOD SURVEY] ส่งข้อความสอบถามอารมณ์ไปยังผู้ใช้:')
-        console.log(`👤 User ID: ${user.id}`)
-        console.log(`👤 Name: ${user.name}`)
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-
-        // Save bot question as a mood_card JSON structure to Firestore chats collection
-        await db.collection('chats').add({
-          user_id: user.id,
-          sender_id: 'bot',
-          message: JSON.stringify({
-            type: 'mood_card',
-            options: ['sad', 'neutral', 'happy', 'love', 'anxious', 'angry'],
-            selected_mood: null,
-          }),
-          created_at: new Date(),
-        })
+        const { id, sid } = await createMoodCardChat(user.id)
+        logger.info(
+          { userId: user.id, name: user.name, chatId: id, sid },
+          '💬 [DAILY MOOD SURVEY] sent',
+        )
       }
 
       logger.info('✅ [SendMoodToAllModule] Completed sending mood survey to all users.')

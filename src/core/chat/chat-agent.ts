@@ -22,6 +22,7 @@ import type {
   TChatMessageItem,
   TThinkCallback,
 } from '~/src/core/chat/chat.type'
+import type { TChatResponse } from '#/features/chats/v1/chat.type'
 import type { Content, Tool, GenerateContentResponse, Part } from '@google/genai'
 
 // ==========================================
@@ -81,6 +82,14 @@ export class ChatAgent {
   private executedTools: Array<{ name: string; credits: number }> = []
   private usedSkills = new Set<string>()
   private remainingCredits: number | null = null
+  // Set by a tool (via `__suppress_agent_response: true` in its response) to signal
+  // that the tool already pushed a user-facing bot_message via SSE+Firestore,
+  // so the agent should skip its own saveBotMessage + done-event emission to avoid duplication.
+  private suppressFinalAgentMessage = false
+  // Captured from a tool's response via `__agent_saved_message` — the chat record the tool
+  // pre-saved to Firestore. The agent uses this in its `done` SSE event (with real metadata)
+  // instead of generating + saving its own LLM text response.
+  private pendingAgentSavedMessage: ISavedBotMessage | undefined
 
   private static readonly HISTORY_WINDOW = 20
   private static readonly SUMMARIZE_THRESHOLD = 40
@@ -228,8 +237,22 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
 
     const systemInstruction = CLASSIFIER_SYSTEM_INSTRUCTION_TEMPLATE.replace('{{TOOLS_DESCRIPTION}}', toolsDescription)
 
+    // Include the last few turns so short follow-up replies ("ใช่", "ตกลง", "เอา")
+    // are not misclassified as general_chat when they answer a pending tool-confirmation.
+    const recentHistory = this.history.slice(-4)
+    const historyBlock = recentHistory
+      .map((c) => {
+        const role = c.role === 'model' ? 'Assistant' : 'User'
+        const text = (c.parts?.[0]?.text || '').slice(0, 300)
+        return `${role}: ${text}`
+      })
+      .join('\n')
+    const classifierInput = historyBlock
+      ? `Recent conversation context:\n${historyBlock}\n\nCurrent user message: ${message}`
+      : message
+
     try {
-      const jsonText = await this.callIntentClassifierLLM(systemInstruction, message)
+      const jsonText = await this.callIntentClassifierLLM(systemInstruction, classifierInput)
       const result = JSON.parse(jsonText) as IChatIntent
       if (result.type === 'direct_tool' && result.toolName && directInvokableNames.includes(result.toolName)) {
         return { type: 'direct_tool', toolName: result.toolName }
@@ -322,21 +345,6 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       this.history.push({ role: 'user', parts: [{ text: combinedMessage }] })
       this.history.push({ role: 'model', parts: [{ text: finalResponseText }] })
 
-      let savedMessage: ISavedBotMessage | undefined
-      if (this.persistHistory) {
-        savedMessage = await this.saveBotMessage(finalResponseText, {
-          inputTokens: totalInputTokens,
-          outputTokens: totalOutputTokens,
-          totalTokens: grandTotalTokens,
-          llmCredits,
-          toolCredits,
-          skillCredits: skillUsage.overhead,
-          creditsUsed: totalCreditsUsed,
-          tools: this.executedTools,
-          skills: skillUsage.breakdown,
-        })
-      }
-
       const metadata: IChatAgentMetadata = {
         totalInputTokens,
         totalOutputTokens,
@@ -345,6 +353,28 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         totalCreditsUsed,
         remainingCredits: this.remainingCredits ?? 0,
         skillsUsed: skillUsage.breakdown,
+      }
+
+      const usage = {
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        totalTokens: grandTotalTokens,
+        llmCredits,
+        toolCredits,
+        skillCredits: skillUsage.overhead,
+        creditsUsed: totalCreditsUsed,
+        tools: this.executedTools,
+        skills: skillUsage.breakdown,
+      }
+
+      if (this.suppressFinalAgentMessage && this.pendingAgentSavedMessage) {
+        await this.emitDoneFromPresavedMessage(this.pendingAgentSavedMessage, metadata, usage, thinkCallback)
+        return { response: '', metadata }
+      }
+
+      let savedMessage: ISavedBotMessage | undefined
+      if (this.persistHistory) {
+        savedMessage = await this.saveBotMessage(finalResponseText, usage)
       }
 
       if (thinkCallback) {
@@ -569,25 +599,13 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       let finalResponseText = finalResponse.candidates?.[0]?.content?.parts?.find((p: Part) => p.text)?.text || ''
 
       if (this.looksLikeRawToolDump(finalResponseText)) {
-        logger.warn(
-          { userId: this.userId, preview: finalResponseText.slice(0, 200) },
-          '[chat-agent] model echoed raw tool output, forcing synthesis pass',
-        )
-        const synthesisInstruction = `${this.composeInstruction(baseInstruction)}\n\nCRITICAL: The previous turn dumped raw JSON tool output instead of answering the user. You MUST now write a final natural Thai answer in Cloudy's persona based on the tool results in this conversation. Do NOT include any JSON, braces, field names, or URL lists. Do NOT call any tools. Just write prose that answers the user's original question.`
-        const synthesisResponse = await this.aiService.generate(contents, {
-          systemInstruction: synthesisInstruction,
-        })
-        const synthText =
-          synthesisResponse.candidates?.[0]?.content?.parts?.find((p: Part) => p.text)?.text || ''
-        if (synthText && !this.looksLikeRawToolDump(synthText)) {
-          finalResponseText = synthText
-          finalResponse = synthesisResponse
+        const retry = await this.retrySynthesisAfterRawDump(contents, baseInstruction, finalResponseText)
+        if (retry.text) {
+          finalResponseText = retry.text
+          finalResponse = retry.response
         }
-        const synthUsage = synthesisResponse.usageMetadata
-        if (synthUsage) {
-          totalInputTokens += synthUsage.promptTokenCount || 0
-          totalOutputTokens += synthUsage.candidatesTokenCount || 0
-        }
+        totalInputTokens += retry.inputTokens
+        totalOutputTokens += retry.outputTokens
       }
 
       const grandTotalTokens = totalInputTokens + totalOutputTokens
@@ -599,21 +617,6 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       this.history.push({ role: 'user', parts: [{ text: context.message }] })
       this.history.push({ role: 'model', parts: [{ text: finalResponseText }] })
 
-      let savedMessage: ISavedBotMessage | undefined
-      if (this.persistHistory) {
-        savedMessage = await this.saveBotMessage(finalResponseText, {
-          inputTokens: totalInputTokens,
-          outputTokens: totalOutputTokens,
-          totalTokens: grandTotalTokens,
-          llmCredits,
-          toolCredits,
-          skillCredits: skillUsage.overhead,
-          creditsUsed: totalCreditsUsed,
-          tools: this.executedTools,
-          skills: skillUsage.breakdown,
-        })
-      }
-
       const metadata: IChatAgentMetadata = {
         totalInputTokens,
         totalOutputTokens,
@@ -622,6 +625,28 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         totalCreditsUsed,
         remainingCredits: this.remainingCredits ?? 0,
         skillsUsed: skillUsage.breakdown,
+      }
+
+      const usage = {
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        totalTokens: grandTotalTokens,
+        llmCredits,
+        toolCredits,
+        skillCredits: skillUsage.overhead,
+        creditsUsed: totalCreditsUsed,
+        tools: this.executedTools,
+        skills: skillUsage.breakdown,
+      }
+
+      if (this.suppressFinalAgentMessage && this.pendingAgentSavedMessage) {
+        await this.emitDoneFromPresavedMessage(this.pendingAgentSavedMessage, metadata, usage, thinkCallback)
+        return { response: '', metadata }
+      }
+
+      let savedMessage: ISavedBotMessage | undefined
+      if (this.persistHistory) {
+        savedMessage = await this.saveBotMessage(finalResponseText, usage)
       }
 
       if (thinkCallback) {
@@ -866,6 +891,61 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     this.currentStepTools.clear()
     this.executedTools = []
     this.usedSkills.clear()
+    this.suppressFinalAgentMessage = false
+    this.pendingAgentSavedMessage = undefined
+  }
+
+  private parseToolPayloadObject(payload: unknown): Record<string, unknown> | null {
+    let obj: unknown = payload
+    if (typeof payload === 'string') {
+      try {
+        obj = JSON.parse(payload)
+      } catch {
+        return null
+      }
+    }
+    if (obj === null || typeof obj !== 'object') return null
+    return obj as Record<string, unknown>
+  }
+
+  private extractSavedBotMessage(handed: unknown): ISavedBotMessage | null {
+    if (handed === null || typeof handed !== 'object') return null
+    const h = handed as Record<string, unknown>
+    if (typeof h.id !== 'string' || !Array.isArray(h.content) || typeof h.createdAt !== 'string') {
+      return null
+    }
+    const parsedDate = new Date(h.createdAt)
+    if (Number.isNaN(parsedDate.getTime())) return null
+    return {
+      id: h.id,
+      sender_id: 'bot',
+      content: h.content as TChatResponse['content'],
+      created_at: parsedDate,
+    }
+  }
+
+  private checkToolSuppressionMarker(payload: unknown): void {
+    const rec = this.parseToolPayloadObject(payload)
+    if (!rec) return
+
+    if (rec.__suppress_agent_response === true && !this.suppressFinalAgentMessage) {
+      this.suppressFinalAgentMessage = true
+      logger.info(
+        { userId: this.userId },
+        '[chat-agent] tool requested suppression of agent final response (helper pre-saved message)',
+      )
+    }
+
+    if (this.pendingAgentSavedMessage === undefined) {
+      const saved = this.extractSavedBotMessage(rec.__agent_saved_message)
+      if (saved) {
+        this.pendingAgentSavedMessage = saved
+        logger.info(
+          { userId: this.userId, chatId: saved.id },
+          '[chat-agent] captured tool-pre-saved bot message for use in done event',
+        )
+      }
+    }
   }
 
   private computeSkillUsage(): {
@@ -939,6 +1019,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     this.currentStepTools.add(callSignature)
 
     const responsePayload = await this.executeToolCall(call.name, call.args, context, thinkCallback)
+    this.checkToolSuppressionMarker(responsePayload)
     let cost = 0
     const executedTool = this.tools.find((t: IChatTool): boolean => t.name === call.name)
     if (executedTool && executedTool.creditCost) {
@@ -1030,6 +1111,20 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
   // Firestore Persistence & Memories
   // ==========================================
 
+  /** Derive a plain-text representation of a chat doc's content for LLM history loading. */
+  private chatDocToHistoryText(data: FirebaseFirestore.DocumentData): string {
+    if (!Array.isArray(data.content)) return ''
+    const parts: string[] = []
+    for (const item of data.content as Array<Record<string, unknown>>) {
+      if (item?.type === 'text' && typeof item.text === 'string') {
+        parts.push(item.text)
+      } else if (typeof item?.type === 'string') {
+        parts.push(`[${item.type} card]`)
+      }
+    }
+    return parts.join(' ').trim()
+  }
+
   private async loadHistoryFromFirestore(): Promise<void> {
     if (this.history.length > 0) {
       return
@@ -1048,7 +1143,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
           const data = doc.data()
           return {
             role: data.sender_id === 'bot' ? ('model' as const) : ('user' as const),
-            parts: [{ text: (data.message as string) || '' }],
+            parts: [{ text: this.chatDocToHistoryText(data) }],
           }
         })
         return
@@ -1078,7 +1173,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         const data = doc.data()
         return {
           role: data.sender_id === 'bot' ? ('model' as const) : ('user' as const),
-          parts: [{ text: (data.message as string) || '' }],
+          parts: [{ text: this.chatDocToHistoryText(data) }],
         }
       })
 
@@ -1111,7 +1206,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         .map((doc) => {
           const data = doc.data()
           const speaker = data.sender_id === 'bot' ? 'Assistant' : 'User'
-          return `${speaker}: ${(data.message as string) || ''}`
+          return `${speaker}: ${this.chatDocToHistoryText(data)}`
         })
         .join('\n')
 
@@ -1185,7 +1280,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       const createdAt = getUtcTime().toDate()
       const data = {
         sender_id: 'bot' as const,
-        message: '',
+        content: [] as TChatResponse['content'],
+        feedback: null,
         created_at: createdAt,
         error: {
           message: errorMessage.slice(0, 500),
@@ -1205,21 +1301,141 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     try {
       const docRef = db.collection('chats').doc()
       const createdAt = getUtcTime().toDate()
+      const content: TChatResponse['content'] = [{ type: 'text', text: message }]
       await docRef.set({
         user_id: this.userId,
         sender_id: this.userId,
-        message,
+        content,
+        feedback: null,
+        error: null,
         created_at: createdAt,
       })
       return {
         id: docRef.id,
         sender_id: this.userId,
-        message,
+        content,
         created_at: createdAt,
       }
     } catch (error) {
       throw new ChatAgentError('persist_user_message', 'Failed to save user message to Firestore', {
         cause: error,
+      })
+    }
+  }
+
+  /** Attach LLM/tool usage fields to a chat doc that a tool pre-saved, then deduct credits from the user. */
+  private async attachUsageToPresavedAndDeductCredits(
+    chatId: string,
+    usage: {
+      inputTokens: number
+      outputTokens: number
+      totalTokens: number
+      llmCredits: number
+      toolCredits: number
+      skillCredits: number
+      creditsUsed: number
+      tools: Array<{ name: string; credits: number }>
+      skills: Array<{ name: string; overheadCredits: number; toolCount: number }>
+    },
+  ): Promise<void> {
+    try {
+      await db.collection('chats').doc(chatId).update({
+        input_tokens: usage.inputTokens,
+        output_tokens: usage.outputTokens,
+        total_tokens: usage.totalTokens,
+        llm_credits: Math.ceil(usage.llmCredits),
+        tool_credits: Math.ceil(usage.toolCredits),
+        skill_credits: Math.ceil(usage.skillCredits),
+        credits_used: Math.ceil(usage.creditsUsed),
+        tools: usage.tools,
+        skills_used: usage.skills.map((s) => ({
+          name: s.name,
+          overhead_credits: s.overheadCredits,
+          tool_count: s.toolCount,
+        })),
+        error: null,
+      })
+    } catch (error) {
+      logger.warn({ error, chatId }, '[chat-agent] failed to attach usage to pre-saved chat doc')
+    }
+
+    let remaining = 0
+    if (usage.creditsUsed > 0) {
+      const userDocRef = db.collection('users').doc(this.userId)
+      try {
+        await db.runTransaction(async (transaction) => {
+          const userDoc = await transaction.get(userDocRef)
+          if (userDoc.exists) {
+            const currentCredit = userDoc.data()?.credit ?? 0
+            remaining = Math.max(0, currentCredit - usage.creditsUsed)
+            transaction.update(userDocRef, { credit: remaining })
+          }
+        })
+      } catch (error) {
+        logger.warn({ error }, '[chat-agent] failed to deduct credits for pre-saved bot message')
+      }
+    } else {
+      const userDoc = await db.collection('users').doc(this.userId).get()
+      if (userDoc.exists) remaining = userDoc.data()?.credit ?? 0
+    }
+    this.remainingCredits = remaining
+  }
+
+  private async retrySynthesisAfterRawDump(
+    contents: Content[],
+    baseInstruction: string,
+    previewText: string,
+  ): Promise<{ text: string; response: GenerateContentResponse; inputTokens: number; outputTokens: number }> {
+    logger.warn(
+      { userId: this.userId, preview: previewText.slice(0, 200) },
+      '[chat-agent] model echoed raw tool output, forcing synthesis pass',
+    )
+    const synthesisInstruction = `${this.composeInstruction(baseInstruction)}\n\nCRITICAL: The previous turn dumped raw JSON tool output instead of answering the user. You MUST now write a final natural Thai answer in Cloudy's persona based on the tool results in this conversation. Do NOT include any JSON, braces, field names, or URL lists. Do NOT call any tools. Just write prose that answers the user's original question.`
+    const synthesisResponse = await this.aiService.generate(contents, {
+      systemInstruction: synthesisInstruction,
+    })
+    const synthText =
+      synthesisResponse.candidates?.[0]?.content?.parts?.find((p: Part) => p.text)?.text || ''
+    const usable = synthText && !this.looksLikeRawToolDump(synthText)
+    return {
+      text: usable ? synthText : '',
+      response: synthesisResponse,
+      inputTokens: synthesisResponse.usageMetadata?.promptTokenCount || 0,
+      outputTokens: synthesisResponse.usageMetadata?.candidatesTokenCount || 0,
+    }
+  }
+
+  private async emitDoneFromPresavedMessage(
+    presaved: ISavedBotMessage,
+    metadata: IChatAgentMetadata,
+    usage: {
+      inputTokens: number
+      outputTokens: number
+      totalTokens: number
+      llmCredits: number
+      toolCredits: number
+      skillCredits: number
+      creditsUsed: number
+      tools: Array<{ name: string; credits: number }>
+      skills: Array<{ name: string; overheadCredits: number; toolCount: number }>
+    },
+    thinkCallback?: TThinkCallback,
+  ): Promise<void> {
+    if (this.persistHistory && usage.creditsUsed > 0) {
+      await this.attachUsageToPresavedAndDeductCredits(presaved.id, usage)
+    }
+    metadata.remainingCredits = this.remainingCredits ?? metadata.remainingCredits
+    logger.info(
+      { userId: this.userId, presavedId: presaved.id },
+      '[chat-agent] using tool-pre-saved message in done event (suppressed agent text)',
+    )
+    if (thinkCallback) {
+      await thinkCallback({
+        status: 'done',
+        response: '',
+        messageId: presaved.id,
+        savedMessage: presaved,
+        metadata,
       })
     }
   }
@@ -1242,21 +1458,28 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     try {
       const botDocRef = db.collection('chats').doc()
       const botCreatedAt = getUtcTime().toDate()
+      const content: TChatResponse['content'] = [{ type: 'text', text: responseText }]
       const botData = {
         sender_id: 'bot' as const,
-        message: responseText,
+        content,
+        feedback: null,
+        error: null,
         created_at: botCreatedAt,
         ...(usage
           ? {
               input_tokens: usage.inputTokens,
               output_tokens: usage.outputTokens,
               total_tokens: usage.totalTokens,
-              llm_credits: usage.llmCredits,
-              tool_credits: usage.toolCredits,
-              skill_credits: usage.skillCredits,
-              credits_used: usage.creditsUsed,
+              llm_credits: Math.ceil(usage.llmCredits),
+              tool_credits: Math.ceil(usage.toolCredits),
+              skill_credits: Math.ceil(usage.skillCredits),
+              credits_used: Math.ceil(usage.creditsUsed),
               tools: usage.tools,
-              skills_used: usage.skills,
+              skills_used: usage.skills.map((s) => ({
+                name: s.name,
+                overhead_credits: s.overheadCredits,
+                tool_count: s.toolCount,
+              })),
             }
           : {}),
       }
@@ -1466,8 +1689,21 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
 
   /** Dynamic time suffix — recomputed every reasoning round so multi-round loops see fresh "now". */
   private getCurrentTimeSuffix(): string {
-    const nowStr = getLocalTime().format('YYYY-MM-DDTHH:mm:ssZ')
-    return `\n\nCurrent Thai local time is ${nowStr}.`
+    const now = getLocalTime()
+    const nowIso = now.format('YYYY-MM-DDTHH:mm:ssZ')
+    const today = now.format('YYYY-MM-DD')
+    const tomorrow = now.add(1, 'day').format('YYYY-MM-DD')
+    const yesterday = now.subtract(1, 'day').format('YYYY-MM-DD')
+    const dayName = now.format('dddd')
+    return `
+
+=== CURRENT DATETIME (Asia/Bangkok, +07:00) — SINGLE SOURCE OF TRUTH ===
+Now           : ${nowIso} (${dayName})
+Today (วันนี้)  : ${today}
+Tomorrow (พรุ่งนี้): ${tomorrow}
+Yesterday (เมื่อวาน): ${yesterday}
+
+CRITICAL: When the user says "วันนี้" / "today", use ${today}. When the user says "พรุ่งนี้" / "tomorrow", use ${tomorrow}. When the user says "เมื่อวาน" / "yesterday", use ${yesterday}. Do NOT compute these dates from your own training-data calendar — it is stale. Always use the values above verbatim.`
   }
 
   private composeInstruction(baseInstruction: string): string {
@@ -1478,21 +1714,58 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     return !!response.candidates?.[0]?.content?.parts?.some((part) => !!part.functionCall)
   }
 
-  private looksLikeRawToolDump(text: string): boolean {
-    if (!text) return false
-    const trimmed = text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '').trim()
-    if (trimmed.length < 2) return false
-    const startsLikeJson = trimmed.startsWith('{') || trimmed.startsWith('[')
-    if (!startsLikeJson) return false
-    if (/"(?:source|results|query|timestamp)"\s*:/.test(trimmed)) {
-      return true
-    }
+  private hasKnownDumpKeywords(text: string): boolean {
+    if (/"(?:source|results|query|timestamp)"\s*:/.test(text)) return true
+    // Pattern: model emitted a tool-call envelope as text — JSON-shaped prefix that
+    // mentions "action"/"expenses"/"schedules"/"todos"/etc. (missed function call).
+    return /"(?:action|expenses|schedules|todos|moods|filter)"\s*:/.test(text.slice(0, 400))
+  }
+
+  private isJsonOrJsonPrefix(text: string): boolean {
     try {
-      JSON.parse(trimmed)
+      JSON.parse(text)
+      return true
+    } catch {}
+    const prefixEnd = this.findJsonPrefixEnd(text)
+    if (prefixEnd <= 0) return false
+    try {
+      JSON.parse(text.slice(0, prefixEnd))
       return true
     } catch {
       return false
     }
+  }
+
+  private looksLikeRawToolDump(text: string): boolean {
+    if (!text) return false
+    const trimmed = text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '').trim()
+    if (trimmed.length < 2) return false
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false
+    if (this.hasKnownDumpKeywords(trimmed)) return true
+    return this.isJsonOrJsonPrefix(trimmed)
+  }
+
+  /** Returns index right after the first balanced JSON object/array prefix, or -1. */
+  private findJsonPrefixEnd(text: string): number {
+    if (!text) return -1
+    const opener = text[0]
+    if (opener !== '{' && opener !== '[') return -1
+    let depth = 0
+    let inString = false
+    let escape = false
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i]
+      if (escape) { escape = false; continue }
+      if (c === '\\') { escape = true; continue }
+      if (c === '"') { inString = !inString; continue }
+      if (inString) continue
+      if (c === '{' || c === '[') depth++
+      else if (c === '}' || c === ']') {
+        depth--
+        if (depth === 0) return i + 1
+      }
+    }
+    return -1
   }
 
   private getOpenAIToolsConfig(classification: IChatIntent): OpenAI.Chat.Completions.ChatCompletionTool[] {

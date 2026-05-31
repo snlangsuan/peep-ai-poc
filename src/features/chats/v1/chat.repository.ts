@@ -18,7 +18,7 @@ export class ChatRepository {
         id: doc.id,
         user_id: data.user_id || data.userId,
         sender_id: data.sender_id,
-        message: data.message,
+        content: Array.isArray(data.content) ? (data.content as TChatRawResponse['content']) : undefined,
         feedback: data.feedback || null,
         created_at: data.created_at?.toDate?.()?.toISOString() || data.created_at,
         input_tokens: data.input_tokens,
@@ -26,8 +26,10 @@ export class ChatRepository {
         total_tokens: data.total_tokens,
         llm_credits: data.llm_credits,
         tool_credits: data.tool_credits,
+        skill_credits: data.skill_credits,
         credits_used: data.credits_used,
         tools: data.tools,
+        skills_used: data.skills_used,
         error: data.error ?? null,
       }
     })

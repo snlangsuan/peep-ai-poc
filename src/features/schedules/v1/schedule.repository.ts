@@ -17,14 +17,18 @@ export class ScheduleRepository {
         uuid: input.uuid,
         user_id: input.user_id,
         scheduled_at: convertToUtcTime(input.scheduled_at).toDate(),
+        end_at: input.end_at ? convertToUtcTime(input.end_at).toDate() : null,
         before_sent_at: input.before_sent_at ? convertToUtcTime(input.before_sent_at).toDate() : null,
         sent_at: input.sent_at ? convertToUtcTime(input.sent_at).toDate() : null,
+        repeat: input.repeat ?? null,
         payload: {
           message: input.payload.message,
           type: input.payload.type,
           title: input.payload.title,
           description: input.payload.description ?? null,
           location: input.payload.location ?? null,
+          invitees: input.payload.invitees ?? null,
+          note: input.payload.note ?? null,
         },
         created_at: input.created_at,
         updated_at: input.updated_at,
@@ -79,11 +83,11 @@ export class ScheduleRepository {
 
     let result = docs
     if (filter.start_date) {
-      const startBoundary = this.parseFilterDateTime(filter.start_date)
+      const startBoundary = this.parseFilterStartBoundary(filter.start_date)
       result = result.filter((doc) => convertToLocalTime(doc.scheduled_at).valueOf() >= startBoundary)
     }
     if (filter.end_date) {
-      const endBoundary = this.parseFilterDateTime(filter.end_date)
+      const endBoundary = this.parseFilterEndBoundary(filter.end_date)
       result = result.filter((doc) => convertToLocalTime(doc.scheduled_at).valueOf() <= endBoundary)
     }
     return result
@@ -120,11 +124,17 @@ export class ScheduleRepository {
     if (fields.scheduled_at !== undefined) {
       updateData.scheduled_at = convertToUtcTime(fields.scheduled_at).toDate()
     }
+    if (fields.end_at !== undefined) {
+      updateData.end_at = fields.end_at ? convertToUtcTime(fields.end_at).toDate() : null
+    }
     if (fields.before_sent_at !== undefined) {
       updateData.before_sent_at = fields.before_sent_at ? convertToUtcTime(fields.before_sent_at).toDate() : null
     }
     if (fields.sent_at !== undefined) {
       updateData.sent_at = fields.sent_at ? convertToUtcTime(fields.sent_at).toDate() : null
+    }
+    if (fields.repeat !== undefined) {
+      updateData.repeat = fields.repeat ?? null
     }
     if (fields.payload !== undefined) {
       updateData.payload = {
@@ -133,6 +143,8 @@ export class ScheduleRepository {
         title: fields.payload.title,
         description: fields.payload.description ?? null,
         location: fields.payload.location ?? null,
+        invitees: fields.payload.invitees ?? null,
+        note: fields.payload.note ?? null,
       }
     }
 
@@ -143,8 +155,24 @@ export class ScheduleRepository {
     await db.collection('schedules').doc(uuid).delete()
   }
 
-  private parseFilterDateTime(str: string): number {
-    const parsed = getLocalTime(str).valueOf()
+  /** For start_date filtering: snap to start-of-day if a bare date (YYYY-MM-DD), else use as-is. */
+  private parseFilterStartBoundary(str: string): number {
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(str)
+    const dj = isDateOnly ? getLocalTime(str).startOf('day') : getLocalTime(str)
+    const parsed = dj.valueOf()
+    if (isNaN(parsed)) {
+      throw new Error(`Invalid datetime format: ${str}`)
+    }
+    return parsed
+  }
+
+  /** For end_date filtering: snap to end-of-day if a bare date (YYYY-MM-DD), else use as-is.
+   *  Prevents the off-by-day bug where filter end='2026-05-31' excluded all schedules
+   *  with scheduled_at > 2026-05-31T00:00:00. */
+  private parseFilterEndBoundary(str: string): number {
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(str)
+    const dj = isDateOnly ? getLocalTime(str).endOf('day') : getLocalTime(str)
+    const parsed = dj.valueOf()
     if (isNaN(parsed)) {
       throw new Error(`Invalid datetime format: ${str}`)
     }
@@ -155,6 +183,9 @@ export class ScheduleRepository {
     const scheduledAtDate = convertToUtcTime(
       data.scheduled_at?.toDate ? data.scheduled_at.toDate() : data.scheduled_at,
     ).toDate()
+    const endAtDate = data.end_at
+      ? convertToUtcTime(data.end_at.toDate ? data.end_at.toDate() : data.end_at).toDate()
+      : null
     const beforeSentAtDate = data.before_sent_at
       ? convertToUtcTime(data.before_sent_at.toDate ? data.before_sent_at.toDate() : data.before_sent_at).toDate()
       : null
@@ -166,14 +197,18 @@ export class ScheduleRepository {
       uuid: data.uuid,
       userId: data.user_id || data.userId,
       scheduled_at: scheduledAtDate.toISOString(),
+      end_at: endAtDate ? endAtDate.toISOString() : null,
       before_sent_at: beforeSentAtDate ? beforeSentAtDate.toISOString() : null,
       sent_at: sentAtDate ? sentAtDate.toISOString() : null,
+      repeat: data.repeat ?? null,
       payload: {
         message: data.payload?.message || data.payload?.title || '',
         type: data.payload?.type || 'user_schedule',
         title: data.payload?.title || '',
         description: data.payload?.description ?? null,
         location: data.payload?.location ?? null,
+        invitees: data.payload?.invitees ?? null,
+        note: data.payload?.note ?? null,
       },
       createdAt: data.created_at || data.createdAt,
       updatedAt: data.updated_at || data.updatedAt,

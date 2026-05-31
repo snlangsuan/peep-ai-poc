@@ -28,14 +28,18 @@ export class ScheduleService {
       uuid,
       user_id: userId,
       scheduled_at: input.scheduled_at,
+      end_at: input.end_at ?? null,
       before_sent_at: null,
       sent_at: null,
+      repeat: input.repeat ?? null,
       payload: {
         message: input.title,
         type: 'user_schedule',
         title: input.title,
         description: input.description ?? null,
         location: input.location ?? null,
+        invitees: input.invitees ?? null,
+        note: input.note ?? null,
       },
       created_at: now,
       updated_at: now,
@@ -47,14 +51,18 @@ export class ScheduleService {
       uuid: newSchedule.uuid,
       userId: newSchedule.user_id,
       scheduled_at: newSchedule.scheduled_at,
+      end_at: newSchedule.end_at ?? null,
       before_sent_at: null,
       sent_at: null,
+      repeat: newSchedule.repeat ?? null,
       payload: {
         message: newSchedule.payload.message,
         type: newSchedule.payload.type,
         title: newSchedule.payload.title,
         description: newSchedule.payload.description ?? null,
         location: newSchedule.payload.location ?? null,
+        invitees: newSchedule.payload.invitees ?? null,
+        note: newSchedule.payload.note ?? null,
       },
       createdAt: newSchedule.created_at,
       updatedAt: newSchedule.updated_at,
@@ -76,14 +84,18 @@ export class ScheduleService {
       uuid: schedule.uuid,
       userId: schedule.userId,
       scheduled_at: schedule.scheduled_at,
+      end_at: schedule.end_at ?? null,
       before_sent_at: schedule.before_sent_at ?? null,
       sent_at: schedule.sent_at ?? null,
+      repeat: schedule.repeat ?? null,
       payload: {
         message: schedule.payload.message,
         type: schedule.payload.type,
         title: schedule.payload.title,
         description: schedule.payload.description ?? null,
         location: schedule.payload.location ?? null,
+        invitees: schedule.payload.invitees ?? null,
+        note: schedule.payload.note ?? null,
       },
       createdAt: schedule.createdAt,
       updatedAt: schedule.updatedAt,
@@ -100,14 +112,18 @@ export class ScheduleService {
         uuid: schedule.uuid,
         userId: schedule.userId,
         scheduled_at: schedule.scheduled_at,
+        end_at: schedule.end_at ?? null,
         before_sent_at: schedule.before_sent_at ?? null,
         sent_at: schedule.sent_at ?? null,
+        repeat: schedule.repeat ?? null,
         payload: {
           message: schedule.payload.message,
           type: schedule.payload.type,
           title: schedule.payload.title,
           description: schedule.payload.description ?? null,
           location: schedule.payload.location ?? null,
+          invitees: schedule.payload.invitees ?? null,
+          note: schedule.payload.note ?? null,
         },
         createdAt: schedule.createdAt,
         updatedAt: schedule.updatedAt,
@@ -144,9 +160,19 @@ export class ScheduleService {
       }
     }
 
+    if (input.end_at !== undefined) {
+      fields.end_at = input.end_at
+    }
+
+    if (input.repeat !== undefined) {
+      fields.repeat = input.repeat
+    }
+
     const mergedTitle = input.title !== undefined ? input.title : schedule.payload.title
     const mergedDescription = input.description !== undefined ? input.description : schedule.payload.description
     const mergedLocation = input.location !== undefined ? input.location : schedule.payload.location
+    const mergedInvitees = input.invitees !== undefined ? input.invitees : schedule.payload.invitees
+    const mergedNote = input.note !== undefined ? input.note : schedule.payload.note
 
     fields.payload = {
       message: mergedTitle,
@@ -154,6 +180,8 @@ export class ScheduleService {
       title: mergedTitle,
       description: mergedDescription ?? null,
       location: mergedLocation ?? null,
+      invitees: mergedInvitees ?? null,
+      note: mergedNote ?? null,
     }
 
     await this.repository.update(uuid, fields)
@@ -167,14 +195,18 @@ export class ScheduleService {
       uuid: updated.uuid,
       userId: updated.userId,
       scheduled_at: updated.scheduled_at,
+      end_at: updated.end_at ?? null,
       before_sent_at: updated.before_sent_at ?? null,
       sent_at: updated.sent_at ?? null,
+      repeat: updated.repeat ?? null,
       payload: {
         message: updated.payload.message,
         type: updated.payload.type,
         title: updated.payload.title,
         description: updated.payload.description ?? null,
         location: updated.payload.location ?? null,
+        invitees: updated.payload.invitees ?? null,
+        note: updated.payload.note ?? null,
       },
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,

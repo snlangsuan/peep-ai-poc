@@ -74,7 +74,8 @@ export interface IChatAgentMetadata {
 export interface ISavedBotMessage {
   id: string
   sender_id: 'bot'
-  message: string
+  content: import('#/features/chats/v1/chat.type').TChatResponse['content']
+  feedback?: 'like' | 'dislike' | null
   created_at: Date
   input_tokens?: number
   output_tokens?: number
@@ -84,14 +85,14 @@ export interface ISavedBotMessage {
   skill_credits?: number
   credits_used?: number
   tools?: Array<{ name: string; credits: number }>
-  skills_used?: Array<{ name: string; overheadCredits: number; toolCount: number }>
-  error?: { message: string; stage: string; code?: string }
+  skills_used?: Array<{ name: string; overhead_credits: number; tool_count: number }>
+  error?: { message: string; stage: string; code?: string } | null
 }
 
 export interface ISavedUserMessage {
   id: string
   sender_id: string
-  message: string
+  content: import('#/features/chats/v1/chat.type').TChatResponse['content']
   created_at: Date
 }
 

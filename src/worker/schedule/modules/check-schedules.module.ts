@@ -149,27 +149,8 @@ export class CheckSchedulesModule implements IScheduleModule {
     const notificationMessage = `⏰ [แจ้งเตือนล่วงหน้า 15 นาที] อีก 15 นาที มีนัดหมาย: "${title}"${loc}${desc}`
 
     if (userId) {
-      await db.collection('chats').add({
-        user_id: userId,
-        sender_id: 'bot',
-        message: notificationMessage,
-        created_at: new Date(),
-      })
+      await this.saveAndEmitNotification(userId, notificationMessage)
       logger.info({ scheduleId: doc.id, userId }, '💬 Saved pre-notification message to chats collection')
-
-      // Emit SSE event to trigger real-time chat reload/append in client UI
-      sseBroker.emit(userId, {
-        type: 'done',
-        response: notificationMessage,
-        metadata: {
-          total_input_tokens: 0,
-          total_output_tokens: 0,
-          grand_total_tokens: 0,
-          tool_usage_count: 0,
-          total_credits_used: 0,
-          remaining_credits: 0,
-        },
-      })
     }
   }
 
@@ -199,28 +180,33 @@ export class CheckSchedulesModule implements IScheduleModule {
     const notificationMessage = `🔔 [แจ้งเตือน] ถึงเวลาแล้วจ้า: "${title}"${loc}${desc}`
 
     if (userId) {
-      await db.collection('chats').add({
-        user_id: userId,
-        sender_id: 'bot',
-        message: notificationMessage,
-        created_at: new Date(),
-      })
+      await this.saveAndEmitNotification(userId, notificationMessage)
       logger.info({ scheduleId: doc.id, userId }, '💬 Saved due-notification message to chats collection')
-
-      // Emit SSE event to trigger real-time chat reload/append in client UI
-      sseBroker.emit(userId, {
-        type: 'done',
-        response: notificationMessage,
-        metadata: {
-          total_input_tokens: 0,
-          total_output_tokens: 0,
-          grand_total_tokens: 0,
-          tool_usage_count: 0,
-          total_credits_used: 0,
-          remaining_credits: 0,
-        },
-      })
     }
+  }
+
+  /** Persist a text-only bot notification + emit SSE bot_message in the new content-array shape. */
+  private async saveAndEmitNotification(userId: string, text: string): Promise<void> {
+    const content = [{ type: 'text' as const, text }]
+    const createdAt = new Date()
+    const docRef = await db.collection('chats').add({
+      user_id: userId,
+      sender_id: 'bot',
+      content,
+      feedback: null,
+      error: null,
+      created_at: createdAt,
+    })
+    sseBroker.emit(userId, {
+      type: 'bot_message',
+      message: {
+        id: docRef.id,
+        sender_id: 'bot',
+        content,
+        created_at: createdAt.toISOString(),
+        feedback: null,
+      },
+    })
   }
 
   private parseDate(val: any): Dayjs | null {

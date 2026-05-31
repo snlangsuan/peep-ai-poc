@@ -44,7 +44,7 @@ describe('ChatRepository Unit Tests', () => {
     const fakeDbDoc1: admin.firestore.DocumentData = {
       user_id: 'user-123',
       sender_id: 'user-123',
-      message: 'Hello Agent!',
+      content: [{ type: 'text', text: 'Hello Agent!' }],
       created_at: {
         toDate: () => new Date('2026-05-25T10:00:00.000Z'),
       },
@@ -53,7 +53,7 @@ describe('ChatRepository Unit Tests', () => {
     const fakeDbDoc2: admin.firestore.DocumentData = {
       user_id: 'user-123',
       sender_id: 'bot',
-      message: 'Hello User! I am here to help.',
+      content: [{ type: 'text', text: 'Hello User! I am here to help.' }],
       created_at: {
         toDate: () => new Date('2026-05-25T10:00:02.000Z'),
       },
@@ -96,7 +96,7 @@ describe('ChatRepository Unit Tests', () => {
     expect(results[0]?.id).toBe('chat-doc-1')
     expect(results[0]?.user_id).toBe('user-123')
     expect(results[0]?.sender_id).toBe('user-123')
-    expect(results[0]?.message).toBe('Hello Agent!')
+    expect(results[0]?.content).toEqual([{ type: 'text', text: 'Hello Agent!' }])
     expect(results[0]?.input_tokens).toBeUndefined()
     expect(results[0]?.tools).toBeUndefined()
 
@@ -104,7 +104,7 @@ describe('ChatRepository Unit Tests', () => {
     expect(results[1]?.id).toBe('chat-doc-2')
     expect(results[1]?.user_id).toBe('user-123')
     expect(results[1]?.sender_id).toBe('bot')
-    expect(results[1]?.message).toBe('Hello User! I am here to help.')
+    expect(results[1]?.content).toEqual([{ type: 'text', text: 'Hello User! I am here to help.' }])
     expect(results[1]?.input_tokens).toBe(150)
     expect(results[1]?.output_tokens).toBe(80)
     expect(results[1]?.total_tokens).toBe(230)

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { successResponseSchema } from '#/common/schemas/response.schema'
+import { pushBotExpenseCreatedMessage } from '#/features/chats/v1/expense-notify.helper'
 import { expenseResponseSchema, expenseItemResponseSchema } from '#/features/expenses/v1/expense.schema'
 
 import type { Bindings, JsonInputSchema, ParamInputSchema, QueryInputSchema, Variables } from '#/common/types/app.type'
@@ -33,6 +34,9 @@ export class ExpenseController {
     const userId = c.get('user_id')
     const body = c.req.valid('json')
     const result = await this.service.create(userId, body)
+
+    const created = Array.isArray(result) ? result : [result]
+    void pushBotExpenseCreatedMessage(userId, created)
 
     if (Array.isArray(result)) {
       return c.json<TExpenseResponse[]>(z.array(expenseResponseSchema).parse(result))
@@ -76,7 +80,10 @@ export class ExpenseController {
     const userId = c.get('user_id')
     const { id } = c.req.valid('param')
     const body = c.req.valid('json')
-    await this.service.update(userId, id, body)
+    const updated = await this.service.update(userId, id, body)
+
+    void pushBotExpenseCreatedMessage(userId, [updated])
+
     return c.json<TSuccessResponse>(successResponseSchema.parse({}))
   }
 

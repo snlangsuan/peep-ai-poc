@@ -1,11 +1,11 @@
 import { TodoService } from '#/features/todos/v1/todo.service'
 import { TodoRepository } from '#/features/todos/v1/todo.repository'
+import { pushBotTodoListMessage, pushBotTodoSavedMessage } from '#/features/chats/v1/todo-notify.helper'
 
 import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class TodoManagementTool implements IChatTool {
   readonly name = 'manage_todos'
-  readonly directReturn = true
   readonly description = 'จัดการรายการสิ่งที่ต้องทำ (Todo List) ทั้งสร้างใหม่, เรียกดู, แก้ไขหัวข้อหรือทำเครื่องหมายเสร็จสิ้น, ลบ และแสดงรายการทั้งหมด (รองรับ Pagination แสดงทีละ 10 รายการ และปุ่มถัดไป/ก่อนหน้า)'
   readonly parameters = {
     type: 'OBJECT',
@@ -71,62 +71,140 @@ export class TodoManagementTool implements IChatTool {
 
     try {
       switch (action) {
-        case 'create': {
-          if (!title) {
-            return JSON.stringify({ error: 'Missing required field: "title" is required for create action.' })
-          }
-          const result = await this.service.create(userId, {
-            title,
-            description,
-          })
-          return JSON.stringify({ message: 'สร้างรายการใหม่สำเร็จแล้วจ้า!', todo: result })
-        }
-
-        case 'get': {
-          if (!uuid) {
-            return JSON.stringify({ error: 'Missing required field: "uuid" is required for get action.' })
-          }
-          const result = await this.service.getTodo(userId, uuid)
-          return JSON.stringify({ todo: result })
-        }
-
-        case 'list': {
-          const result = await this.service.getTodos(userId, actualFilter)
-          return JSON.stringify({
-            total: result.metadata.total,
-            count: result.metadata.count,
-            page: result.metadata.page,
-            limit: result.metadata.limit,
-            items: result.items,
-            has_more: result.metadata.total > actualFilter.page * actualFilter.limit,
-          })
-        }
-
-        case 'update': {
-          if (!uuid) {
-            return JSON.stringify({ error: 'Missing required field: "uuid" is required for update action.' })
-          }
-          const result = await this.service.update(userId, uuid, {
-            title,
-            description,
-            completed,
-          })
-          return JSON.stringify({ message: 'อัปเดตรายการสำเร็จแล้วจ้า!', todo: result })
-        }
-
-        case 'delete': {
-          if (!uuid) {
-            return JSON.stringify({ error: 'Missing required field: "uuid" is required for delete action.' })
-          }
-          await this.service.delete(userId, uuid)
-          return JSON.stringify({ message: `ลบรายการสิ่งที่ต้องทำสำเร็จแล้วจ้า!` })
-        }
-
+        case 'create':
+          return await this.handleCreate(userId, { title, description })
+        case 'get':
+          return await this.handleGet(userId, uuid)
+        case 'list':
+          return this.handleList(userId, actualFilter)
+        case 'update':
+          return await this.handleUpdate(userId, { uuid, title, description, completed })
+        case 'delete':
+          return await this.handleDelete(userId, uuid)
         default:
           return JSON.stringify({ error: `Unsupported action: "${action}"` })
       }
     } catch (err: any) {
       return JSON.stringify({ error: err.message || 'Something went wrong while managing todos.' })
     }
+  }
+
+  private async handleCreate(
+    userId: string,
+    args: { title?: string; description?: string },
+  ): Promise<string> {
+    if (!args.title) {
+      return JSON.stringify({ error: 'Missing required field: "title" is required for create action.' })
+    }
+    const result = await this.service.create(userId, {
+      title: args.title,
+      description: args.description,
+    })
+
+    let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
+    const saved = await pushBotTodoSavedMessage(userId, [result], { emitSSE: false })
+    if (saved) {
+      savedForAgentDone = {
+        id: saved.id,
+        content: saved.content,
+        createdAt: saved.createdAt.toISOString(),
+      }
+    }
+
+    return JSON.stringify({
+      message: 'สร้างรายการใหม่สำเร็จแล้วจ้า!',
+      todo: result,
+      ...(savedForAgentDone
+        ? {
+            __suppress_agent_response: true,
+            __agent_saved_message: savedForAgentDone,
+          }
+        : {}),
+    })
+  }
+
+  private async handleGet(userId: string, uuid?: string): Promise<string> {
+    if (!uuid) {
+      return JSON.stringify({ error: 'Missing required field: "uuid" is required for get action.' })
+    }
+    const result = await this.service.getTodo(userId, uuid)
+    return JSON.stringify({ todo: result })
+  }
+
+  private async handleUpdate(
+    userId: string,
+    args: { uuid?: string; title?: string; description?: string; completed?: boolean },
+  ): Promise<string> {
+    if (!args.uuid) {
+      return JSON.stringify({ error: 'Missing required field: "uuid" is required for update action.' })
+    }
+    const result = await this.service.update(userId, args.uuid, {
+      title: args.title,
+      description: args.description,
+      completed: args.completed,
+    })
+
+    let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
+    const saved = await pushBotTodoSavedMessage(userId, [result], { emitSSE: false })
+    if (saved) {
+      savedForAgentDone = {
+        id: saved.id,
+        content: saved.content,
+        createdAt: saved.createdAt.toISOString(),
+      }
+    }
+
+    return JSON.stringify({
+      message: 'อัปเดตรายการสำเร็จแล้วจ้า!',
+      todo: result,
+      ...(savedForAgentDone
+        ? {
+            __suppress_agent_response: true,
+            __agent_saved_message: savedForAgentDone,
+          }
+        : {}),
+    })
+  }
+
+  private async handleDelete(userId: string, uuid?: string): Promise<string> {
+    if (!uuid) {
+      return JSON.stringify({ error: 'Missing required field: "uuid" is required for delete action.' })
+    }
+    await this.service.delete(userId, uuid)
+    return JSON.stringify({ message: `ลบรายการสิ่งที่ต้องทำสำเร็จแล้วจ้า!` })
+  }
+
+  private async handleList(
+    userId: string,
+    actualFilter: { page: number; limit: number; completed?: boolean },
+  ): Promise<string> {
+    const result = await this.service.getTodos(userId, actualFilter)
+
+    let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
+    if (result.items.length > 0) {
+      const saved = await pushBotTodoListMessage(userId, result.items, { emitSSE: false })
+      if (saved) {
+        savedForAgentDone = {
+          id: saved.id,
+          content: saved.content,
+          createdAt: saved.createdAt.toISOString(),
+        }
+      }
+    }
+
+    return JSON.stringify({
+      total: result.metadata.total,
+      count: result.metadata.count,
+      page: result.metadata.page,
+      limit: result.metadata.limit,
+      items: result.items,
+      has_more: result.metadata.total > actualFilter.page * actualFilter.limit,
+      ...(savedForAgentDone
+        ? {
+            __suppress_agent_response: true,
+            __agent_saved_message: savedForAgentDone,
+          }
+        : {}),
+    })
   }
 }

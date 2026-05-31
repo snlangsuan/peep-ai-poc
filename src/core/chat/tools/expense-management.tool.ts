@@ -1,11 +1,11 @@
 import { ExpenseService } from '#/features/expenses/v1/expense.service'
 import { ExpenseRepository } from '#/features/expenses/v1/expense.repository'
+import { pushBotExpenseCreatedMessage, pushBotExpenseListMessage } from '#/features/chats/v1/expense-notify.helper'
 
 import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class ExpenseManagementTool implements IChatTool {
   readonly name = 'manage_expenses'
-  readonly directReturn = true
   readonly description = 'จัดการบันทึกค่าใช้จ่าย (Expenses) ของผู้ใช้ ทั้งการสร้าง/บันทึกรายได้-รายจ่าย, เรียกดู, แก้ไขข้อมูล, ลบ และแสดงรายงานตามช่วงเวลา (เช่น ค่าใช้จ่ายของวันนี้, เมื่อวาน หรือระบุวันที่)'
   readonly parameters = {
     type: 'OBJECT',
@@ -162,7 +162,32 @@ export class ExpenseManagementTool implements IChatTool {
       }
     })
     const result = await this.service.create(userId, { expenses: mappedExpenses })
-    return JSON.stringify({ message: 'บันทึกค่าใช้จ่ายเสร็จเรียบร้อยแล้วจ้า!', items: result })
+
+    let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
+    if (result.length > 0) {
+      const saved = await pushBotExpenseCreatedMessage(userId, result, { emitSSE: false })
+      if (saved) {
+        savedForAgentDone = {
+          id: saved.id,
+          content: saved.content,
+          createdAt: saved.createdAt.toISOString(),
+        }
+      }
+    }
+
+    return JSON.stringify({
+      message:
+        result.length === 1
+          ? 'บันทึกค่าใช้จ่ายเรียบร้อยแล้วจ้า!'
+          : `บันทึกค่าใช้จ่ายเรียบร้อย ${result.length} รายการแล้วจ้า!`,
+      items: result,
+      ...(savedForAgentDone
+        ? {
+            __suppress_agent_response: true,
+            __agent_saved_message: savedForAgentDone,
+          }
+        : {}),
+    })
   }
 
   private async handleGet(userId: string, uuid?: string): Promise<string> {
@@ -184,9 +209,38 @@ export class ExpenseManagementTool implements IChatTool {
       limit: filter?.limit,
     }
     const result = await this.service.getExpenses(userId, apiFilter)
-    
+
     // Calculate total expense amount for the queried period
     const sumAmount = result.items.reduce((acc, curr) => acc + (curr.amount || 0), 0)
+
+    // If the filter describes a bounded period of <= 31 days and we have items, push
+    // a structured expense card to the user (text + expense card) and tell the agent
+    // to skip its own done event so the user sees one cohesive message.
+    const shouldPushCard =
+      result.items.length > 0 &&
+      !!filter?.startDate &&
+      !!filter?.endDate &&
+      this.daysBetweenInclusive(filter.startDate, filter.endDate) <= 31
+
+    let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
+    if (shouldPushCard) {
+      const saved = await pushBotExpenseListMessage(
+        userId,
+        {
+          expenses: result.items,
+          startDate: filter!.startDate!,
+          endDate: filter!.endDate!,
+        },
+        { emitSSE: false },
+      )
+      if (saved) {
+        savedForAgentDone = {
+          id: saved.id,
+          content: saved.content,
+          createdAt: saved.createdAt.toISOString(),
+        }
+      }
+    }
 
     return JSON.stringify({
       total: result.metadata.total,
@@ -197,9 +251,23 @@ export class ExpenseManagementTool implements IChatTool {
       total_amount: sumAmount,
       period: {
         start: filter?.startDate || 'all',
-        end: filter?.endDate || 'all'
-      }
+        end: filter?.endDate || 'all',
+      },
+      ...(savedForAgentDone
+        ? {
+            __suppress_agent_response: true,
+            __agent_saved_message: savedForAgentDone,
+          }
+        : {}),
     })
+  }
+
+  /** Days between two YYYY-MM-DD dates, inclusive. Returns Infinity on parse failure. */
+  private daysBetweenInclusive(start: string, end: string): number {
+    const s = Date.parse(start)
+    const e = Date.parse(end)
+    if (Number.isNaN(s) || Number.isNaN(e)) return Number.POSITIVE_INFINITY
+    return Math.floor((e - s) / 86400000) + 1
   }
 
   private async handleUpdate(
@@ -228,7 +296,27 @@ export class ExpenseManagementTool implements IChatTool {
       date,
       time,
     })
-    return JSON.stringify({ message: 'แก้ไขรายการค่าใช้จ่ายสำเร็จแล้วจ้า!', item: result })
+
+    let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
+    const saved = await pushBotExpenseCreatedMessage(userId, [result], { emitSSE: false })
+    if (saved) {
+      savedForAgentDone = {
+        id: saved.id,
+        content: saved.content,
+        createdAt: saved.createdAt.toISOString(),
+      }
+    }
+
+    return JSON.stringify({
+      message: 'แก้ไขรายการค่าใช้จ่ายสำเร็จแล้วจ้า!',
+      item: result,
+      ...(savedForAgentDone
+        ? {
+            __suppress_agent_response: true,
+            __agent_saved_message: savedForAgentDone,
+          }
+        : {}),
+    })
   }
 
   private async handleDelete(userId: string, uuid?: string): Promise<string> {
