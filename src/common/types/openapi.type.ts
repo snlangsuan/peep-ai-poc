@@ -8,4 +8,5 @@ export enum ERouteTag {
   CHAT = 'Chat',
   UID = 'Uid',
   SUMMARY = 'Summary',
+  PARSER = 'Parser',
 }

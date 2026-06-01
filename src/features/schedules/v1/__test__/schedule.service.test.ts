@@ -66,6 +66,7 @@ describe('ScheduleService Unit Tests', () => {
       description: 'Discuss marketing strategy',
       location: 'Cafe',
       scheduled_at: '2026-05-24T12:00:00.000Z',
+      type: 'calendar',
     })
 
     expect(result.uuid).toBeDefined()

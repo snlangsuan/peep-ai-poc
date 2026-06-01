@@ -27,6 +27,7 @@ export class ScheduleService {
     const newSchedule: TScheduleCreateInput = {
       uuid,
       user_id: userId,
+      type: input.type ?? 'calendar',
       scheduled_at: input.scheduled_at,
       end_at: input.end_at ?? null,
       before_sent_at: null,
@@ -50,6 +51,7 @@ export class ScheduleService {
     return {
       uuid: newSchedule.uuid,
       userId: newSchedule.user_id,
+      type: newSchedule.type,
       scheduled_at: newSchedule.scheduled_at,
       end_at: newSchedule.end_at ?? null,
       before_sent_at: null,
@@ -83,6 +85,7 @@ export class ScheduleService {
     return {
       uuid: schedule.uuid,
       userId: schedule.userId,
+      type: schedule.type,
       scheduled_at: schedule.scheduled_at,
       end_at: schedule.end_at ?? null,
       before_sent_at: schedule.before_sent_at ?? null,
@@ -111,6 +114,7 @@ export class ScheduleService {
       items: data.map((schedule) => ({
         uuid: schedule.uuid,
         userId: schedule.userId,
+        type: schedule.type,
         scheduled_at: schedule.scheduled_at,
         end_at: schedule.end_at ?? null,
         before_sent_at: schedule.before_sent_at ?? null,
@@ -168,6 +172,10 @@ export class ScheduleService {
       fields.repeat = input.repeat
     }
 
+    if (input.type !== undefined) {
+      fields.type = input.type
+    }
+
     const mergedTitle = input.title !== undefined ? input.title : schedule.payload.title
     const mergedDescription = input.description !== undefined ? input.description : schedule.payload.description
     const mergedLocation = input.location !== undefined ? input.location : schedule.payload.location
@@ -194,6 +202,7 @@ export class ScheduleService {
     return {
       uuid: updated.uuid,
       userId: updated.userId,
+      type: updated.type,
       scheduled_at: updated.scheduled_at,
       end_at: updated.end_at ?? null,
       before_sent_at: updated.before_sent_at ?? null,

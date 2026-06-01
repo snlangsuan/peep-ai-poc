@@ -226,6 +226,7 @@ export class ScheduleManagementTool implements IChatTool {
           invitees: it.invitees,
           repeat: it.repeat,
           note: it.note,
+          type: 'calendar',
         })
         created.push(r)
       } catch (err: any) {

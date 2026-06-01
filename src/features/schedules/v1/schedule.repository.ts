@@ -16,6 +16,7 @@ export class ScheduleRepository {
       .set({
         uuid: input.uuid,
         user_id: input.user_id,
+        type: input.type,
         scheduled_at: convertToUtcTime(input.scheduled_at).toDate(),
         end_at: input.end_at ? convertToUtcTime(input.end_at).toDate() : null,
         before_sent_at: input.before_sent_at ? convertToUtcTime(input.before_sent_at).toDate() : null,
@@ -136,6 +137,9 @@ export class ScheduleRepository {
     if (fields.repeat !== undefined) {
       updateData.repeat = fields.repeat ?? null
     }
+    if (fields.type !== undefined) {
+      updateData.type = fields.type
+    }
     if (fields.payload !== undefined) {
       updateData.payload = {
         message: fields.payload.message,
@@ -196,6 +200,7 @@ export class ScheduleRepository {
     return {
       uuid: data.uuid,
       userId: data.user_id || data.userId,
+      type: data.type === 'reminder' ? 'reminder' : 'calendar',
       scheduled_at: scheduledAtDate.toISOString(),
       end_at: endAtDate ? endAtDate.toISOString() : null,
       before_sent_at: beforeSentAtDate ? beforeSentAtDate.toISOString() : null,

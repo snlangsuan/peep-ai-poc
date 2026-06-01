@@ -76,6 +76,7 @@ describe('ScheduleRepository Unit Tests', () => {
     const input: TScheduleCreateInput = {
       uuid: 'schedule-uuid-1',
       user_id: 'user-uuid-1',
+      type: 'calendar',
       scheduled_at: '2026-06-01T09:00:00.000Z',
       before_sent_at: null,
       sent_at: null,

@@ -5,6 +5,7 @@ import { paginationMetadataSchema } from '#/common/schemas/response.schema'
 import { dateTimeType } from '#/common/schemas/share.schema'
 
 export const scheduleRepeatSchema = z.enum(['none', 'daily', 'weekly', 'monthly', 'yearly'])
+export const scheduleTypeSchema = z.enum(['calendar', 'reminder'])
 
 export const scheduleCreatePayloadSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -15,6 +16,7 @@ export const scheduleCreatePayloadSchema = z.object({
   invitees: z.string().optional(),
   repeat: scheduleRepeatSchema.optional(),
   note: z.string().optional(),
+  type: scheduleTypeSchema.default('calendar'),
 })
 
 export const scheduleUpdatePayloadSchema = z.object({
@@ -26,11 +28,13 @@ export const scheduleUpdatePayloadSchema = z.object({
   invitees: z.string().optional(),
   repeat: scheduleRepeatSchema.optional(),
   note: z.string().optional(),
+  type: scheduleTypeSchema.optional(),
 })
 
 export const scheduleResponseSchema = z.object({
   uuid: z.string(),
   userId: z.string(),
+  type: scheduleTypeSchema,
   scheduled_at: z.string(),
   end_at: z.string().optional().nullable(),
   before_sent_at: z.string().optional().nullable(),

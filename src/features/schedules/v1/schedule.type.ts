@@ -16,10 +16,12 @@ export type TScheduleItemResponse = z.infer<typeof scheduleItemResponseSchema>
 export type TScheduleParamPayload = z.infer<typeof scheduleParamPayloadSchema>
 
 export type TScheduleRepeat = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'
+export type TScheduleType = 'calendar' | 'reminder'
 
 export type TScheduleCreateInput = {
   uuid: string
   user_id: string
+  type: TScheduleType
   scheduled_at: string
   end_at?: string | null
   before_sent_at?: string | null
