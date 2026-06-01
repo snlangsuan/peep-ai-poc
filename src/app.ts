@@ -24,9 +24,7 @@ app.use(requestId())
 app.use(secureHeaders())
 app.use(
   '/poc/api/*',
-  cors({
-    origin: envVariables.WHITE_LIST_ORIGINS,
-  }),
+  cors(),
 )
 app.use('/poc/api/*', loggerMiddleware())
 
