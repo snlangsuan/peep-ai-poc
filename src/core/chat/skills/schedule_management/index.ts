@@ -1,14 +1,11 @@
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import skillMd from './skill.md' with { type: 'text' }
 
 import { ScheduleManagementTool } from '#/core/chat/tools/schedule-management.tool'
-import { parseSkillManifest, buildSkillFromManifest } from '#/core/chat/skill-registry'
+import { parseSkillManifestText, buildSkillFromManifest } from '#/core/chat/skill-registry'
 
 import type { IChatSkill } from '~/src/core/chat/chat.type'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-
 export function createScheduleManagementSkill(): IChatSkill {
-  const manifest = parseSkillManifest(join(__dirname, 'skill.md'))
+  const manifest = parseSkillManifestText(skillMd, 'schedule_management/skill.md')
   return buildSkillFromManifest(manifest, [new ScheduleManagementTool()])
 }
