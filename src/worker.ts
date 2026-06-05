@@ -3,6 +3,7 @@ import { memoryQueueService } from '#/common/services/queue.service'
 import { sseBroker } from '#/common/services/sse-broker.service'
 import { ChatAgent, ChatAgentError } from '#/core/chat/chat-agent'
 import { mapRawChatToResponse } from '#/features/chats/v1/chat.mapper'
+import { getCurrentSessionId } from '#/features/chats/v1/chat-session.helper'
 import {
   createWebSearchSkill,
   createScheduleManagementSkill,
@@ -13,6 +14,8 @@ import {
   createSummarySkill,
 } from '#/core/chat/skills'
 import { CheckSchedulesModule } from '#/worker/schedule/modules/check-schedules.module'
+import { ExtractMemoriesModule } from '#/worker/schedule/modules/extract-memories.module'
+import { GenerateHoroscopeModule } from '#/worker/schedule/modules/generate-horoscope.module'
 import { SendMoodToAllModule } from '#/worker/schedule/modules/send-mood.module'
 import { ScheduleWorker } from '#/worker/schedule/schedule-worker'
 
@@ -97,8 +100,11 @@ export function startQueueWorker() {
       })
       logger.info({ userId, content: contentSummary }, '[chat-agent] received message')
 
+      const sessionId = await getCurrentSessionId(userId)
+
       const agent = new ChatAgent({
         userId,
+        sessionId,
         persistHistory: true,
         persistMemory: true,
         // persona: DEFAULT_PERSONA,           // ← เลือก persona ที่นี่ในอนาคต
@@ -144,7 +150,6 @@ export function startQueueWorker() {
     3,
   )
 
-
   logger.info('✅ Queue worker is active and listening to Firebase Realtime Database.')
 }
 
@@ -156,7 +161,11 @@ export function startScheduleWorker() {
   }
 
   scheduleWorker = new ScheduleWorker()
-  scheduleWorker.addModule(new CheckSchedulesModule()).addModule(new SendMoodToAllModule())
+  scheduleWorker
+    .addModule(new CheckSchedulesModule())
+    .addModule(new SendMoodToAllModule())
+    .addModule(new ExtractMemoriesModule())
+    .addModule(new GenerateHoroscopeModule())
 
   scheduleWorker.start()
 }

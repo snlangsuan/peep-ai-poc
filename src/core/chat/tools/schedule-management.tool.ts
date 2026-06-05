@@ -1,23 +1,22 @@
-import { ScheduleService } from '#/features/schedules/v1/schedule.service'
-import { ScheduleRepository } from '#/features/schedules/v1/schedule.repository'
 import { convertToLocalTime } from '#/common/utils/datetime.util'
-import {
-  pushBotScheduleCreatedMessage,
-  pushBotScheduleListMessage,
-} from '#/features/chats/v1/schedule-notify.helper'
+import { pushBotScheduleCreatedMessage, pushBotScheduleListMessage } from '#/features/chats/v1/schedule-notify.helper'
+import { ScheduleRepository } from '#/features/schedules/v1/schedule.repository'
+import { ScheduleService } from '#/features/schedules/v1/schedule.service'
 
-import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 import type { TScheduleResponse } from '#/features/schedules/v1/schedule.type'
+import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class ScheduleManagementTool implements IChatTool {
   readonly name = 'manage_schedules'
-  readonly description = 'จัดการกำหนดการแจ้งเตือน (Schedule) ของผู้ใช้ ทั้งการสร้าง, เรียกดู, แก้ไข, ลบ หรือแสดงรายการทั้งหมด สามารถใช้คำสั่งค้นหาตามเวลาได้'
+  readonly description =
+    'จัดการกำหนดการแจ้งเตือน (Schedule) ของผู้ใช้ ทั้งการสร้าง, เรียกดู, แก้ไข, ลบ หรือแสดงรายการทั้งหมด สามารถใช้คำสั่งค้นหาตามเวลาได้'
   readonly parameters = {
     type: 'OBJECT',
     properties: {
       action: {
         type: 'STRING',
-        description: 'การดำเนินการที่ต้องการทำ: "create" (สร้างใหม่), "get" (เรียกดูรายตัว), "list" (แสดงรายการทั้งหมด), "update" (แก้ไข), "delete" (ลบ)',
+        description:
+          'การดำเนินการที่ต้องการทำ: "create" (สร้างใหม่), "get" (เรียกดูรายตัว), "list" (แสดงรายการทั้งหมด), "update" (แก้ไข), "delete" (ลบ)',
       },
       uuid: {
         type: 'STRING',
@@ -25,27 +24,37 @@ export class ScheduleManagementTool implements IChatTool {
       },
       scheduledAt: {
         type: 'STRING',
-        description: 'วันและเวลาเริ่มต้นของกำหนดการ (start time, ใช้เป็นเวลาแจ้งเตือนด้วย) รูปแบบ ISO 8601 (เช่น 2026-05-24T19:35:00+07:00) (ใช้คู่กับ "create" หรือ "update" สำหรับรายการเดียว)',
+        description:
+          'วันและเวลาเริ่มต้นของกำหนดการ (start time, ใช้เป็นเวลาแจ้งเตือนด้วย) รูปแบบ ISO 8601 (เช่น 2026-05-24T19:35:00+07:00) (ใช้คู่กับ "create" หรือ "update" สำหรับรายการเดียว)',
       },
       endAt: {
         type: 'STRING',
-        description: 'วันและเวลาที่กำหนดการสิ้นสุด (end time) รูปแบบ ISO 8601 (เช่น 2026-05-24T21:00:00+07:00) — optional ถ้าไม่ระบุจะถือว่าเป็น event เดียวที่ไม่มีช่วงเวลา',
+        description:
+          'วันและเวลาที่กำหนดการสิ้นสุด (end time) รูปแบบ ISO 8601 (เช่น 2026-05-24T21:00:00+07:00) — optional ถ้าไม่ระบุจะถือว่าเป็น event เดียวที่ไม่มีช่วงเวลา',
       },
       title: {
         type: 'STRING',
-        description: 'หัวข้อ/กิจกรรม รวมสถานที่ในประโยคเดียวกัน เช่น "ประชุมที่ห้องประชุม 3" (ห้ามแยก location ออก — เก็บเป็นข้อความเดียว) (ใช้คู่กับ "create" หรือ "update" สำหรับรายการเดียว)',
+        description:
+          'หัวข้อ/กิจกรรม รวมสถานที่ในประโยคเดียวกัน เช่น "ประชุมที่ห้องประชุม 3" (ห้ามแยก location ออก — เก็บเป็นข้อความเดียว) (ใช้คู่กับ "create" หรือ "update" สำหรับรายการเดียว)',
       },
       invitees: {
         type: 'STRING',
-        description: 'รายชื่อผู้ที่จะเชิญ รับเป็น text (เช่น "คุณเอ คุณบี" หรือ "alice@example.com, bob@example.com") — optional',
+        description:
+          'รายชื่อผู้ที่จะเชิญ รับเป็น text (เช่น "คุณเอ คุณบี" หรือ "alice@example.com, bob@example.com") — optional',
       },
       repeat: {
         type: 'STRING',
-        description: 'รูปแบบการเกิดซ้ำของกำหนดการ ค่าที่ใช้ได้: "none" (ไม่ซ้ำ), "daily" (ทุกวัน), "weekly" (ทุกสัปดาห์), "monthly" (ทุกเดือน), "yearly" (ทุกปี) — optional',
+        description:
+          'รูปแบบการเกิดซ้ำของกำหนดการ ค่าที่ใช้ได้: "none" (ไม่ซ้ำ), "daily" (ทุกวัน), "weekly" (ทุกสัปดาห์), "monthly" (ทุกเดือน), "yearly" (ทุกปี) — optional',
       },
       note: {
         type: 'STRING',
         description: 'หมายเหตุเพิ่มเติม (note) ที่ไม่ใช่ description — optional',
+      },
+      confirm: {
+        type: 'BOOLEAN',
+        description:
+          'ใช้กับ action "create" เท่านั้น: ตั้งเป็น true เมื่อผู้ใช้ "ยืนยันแล้ว" ว่าจะสร้างกำหนดการแม้เวลาจะซ้อนทับกับนัดเดิม. โดยปกติไม่ต้องส่ง (หรือ false) ระบบจะตรวจเวลาซ้อนทับให้ก่อน ถ้าซ้อนทับจะถามผู้ใช้ก่อน — เมื่อผู้ใช้ตอบยืนยันค่อยเรียก create ซ้ำพร้อม confirm=true',
       },
       schedules: {
         type: 'ARRAY',
@@ -99,6 +108,7 @@ export class ScheduleManagementTool implements IChatTool {
       invitees?: string
       repeat?: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'
       note?: string
+      confirm?: boolean
       schedules?: Array<{
         scheduledAt: string
         endAt?: string
@@ -111,13 +121,13 @@ export class ScheduleManagementTool implements IChatTool {
     },
     context: IChatContext,
   ): Promise<string> {
-    const { action, uuid, scheduledAt, endAt, title, invitees, repeat, note, schedules, filter } = args
+    const { action, uuid, scheduledAt, endAt, title, invitees, repeat, note, confirm, schedules, filter } = args
     const userId = context.userId
 
     try {
       switch (action) {
         case 'create':
-          return this.handleCreate(userId, { scheduledAt, endAt, title, invitees, repeat, note, schedules })
+          return this.handleCreate(userId, { scheduledAt, endAt, title, invitees, repeat, note, confirm, schedules })
 
         case 'get': {
           if (!uuid) {
@@ -174,8 +184,9 @@ export class ScheduleManagementTool implements IChatTool {
         default:
           return JSON.stringify({ error: `Unsupported action: "${action}"` })
       }
-    } catch (err: any) {
-      return JSON.stringify({ error: err.message || 'Something went wrong while managing schedules.' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong while managing schedules.'
+      return JSON.stringify({ error: message })
     }
   }
 
@@ -188,6 +199,7 @@ export class ScheduleManagementTool implements IChatTool {
       invitees?: string
       repeat?: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'
       note?: string
+      confirm?: boolean
       schedules?: Array<{
         scheduledAt: string
         endAt?: string
@@ -198,7 +210,7 @@ export class ScheduleManagementTool implements IChatTool {
       }>
     },
   ): Promise<string> {
-    const { scheduledAt, endAt, title, invitees, repeat, note, schedules } = args
+    const { scheduledAt, endAt, title, invitees, repeat, note, confirm, schedules } = args
     let items = schedules
     if (!items || items.length === 0) {
       if (!scheduledAt || !title) {
@@ -210,6 +222,94 @@ export class ScheduleManagementTool implements IChatTool {
       items = [{ scheduledAt, endAt, title, invitees, repeat, note }]
     }
 
+    // Unless the user has already confirmed, block creation when any item's time
+    // overlaps an existing schedule, and ask the user to confirm first.
+    if (!confirm) {
+      const conflicts = await this.detectOverlapConflicts(userId, items)
+      if (conflicts.length > 0) {
+        return JSON.stringify({
+          status: 'needs_confirmation',
+          reason: 'time_overlap',
+          conflicts,
+          message:
+            'เวลาที่ขอสร้างซ้อนทับกับนัดหมายที่มีอยู่แล้ว แจ้งผู้ใช้ว่ามีนัดซ้อนทับ (ระบุชื่อ/เวลาที่ชนกัน) แล้วถามว่าจะให้สร้างทับไปเลยไหม ถ้าผู้ใช้ยืนยันให้เรียก action "create" ซ้ำพร้อม confirm=true',
+        })
+      }
+    }
+
+    const { created, failed } = await this.createScheduleItems(userId, items)
+    let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
+    if (created.length > 0) {
+      const saved = await pushBotScheduleCreatedMessage(userId, created, { emitSSE: false })
+      if (saved) {
+        savedForAgentDone = {
+          id: saved.id,
+          content: saved.content,
+          createdAt: saved.createdAt.toISOString(),
+        }
+      }
+    }
+
+    return JSON.stringify({
+      message:
+        created.length === 1 ? 'สร้างกำหนดการสำเร็จแล้วจ้า!' : `สร้างกำหนดการสำเร็จ ${created.length} รายการแล้วจ้า!`,
+      schedules: created.map((s) => this.formatScheduleForLLM(s)),
+      ...(failed.length > 0 ? { failed } : {}),
+      // When the helper has pre-saved the bot message, tell the agent to skip its own
+      // saveBotMessage and use this saved message in its `done` event instead.
+      ...(savedForAgentDone
+        ? {
+            __suppress_agent_response: true,
+            __agent_saved_message: savedForAgentDone,
+          }
+        : {}),
+    })
+  }
+
+  /** Detects which create items overlap an existing schedule's time. */
+  private async detectOverlapConflicts(
+    userId: string,
+    items: Array<{ scheduledAt: string; endAt?: string; title: string }>,
+  ): Promise<
+    Array<{
+      index: number
+      title: string
+      scheduledAt: string
+      conflictsWith: Array<{ title: string; scheduled_at: string; end_at: string | null }>
+    }>
+  > {
+    const conflicts = []
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]!
+      if (!it.scheduledAt || !it.title) continue
+      const overlapping = await this.service.findOverlapping(userId, it.scheduledAt, it.endAt)
+      if (overlapping.length === 0) continue
+      conflicts.push({
+        index: i,
+        title: it.title,
+        scheduledAt: it.scheduledAt,
+        conflictsWith: overlapping.map((s) => ({
+          title: s.payload.title,
+          scheduled_at: s.scheduled_at,
+          end_at: s.end_at ?? null,
+        })),
+      })
+    }
+    return conflicts
+  }
+
+  /** Creates each schedule item, collecting successes and per-item failures. */
+  private async createScheduleItems(
+    userId: string,
+    items: Array<{
+      scheduledAt: string
+      endAt?: string
+      title: string
+      invitees?: string
+      repeat?: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'
+      note?: string
+    }>,
+  ): Promise<{ created: TScheduleResponse[]; failed: Array<{ index: number; error: string }> }> {
     const created: TScheduleResponse[] = []
     const failed: Array<{ index: number; error: string }> = []
     for (let i = 0; i < items.length; i++) {
@@ -229,38 +329,11 @@ export class ScheduleManagementTool implements IChatTool {
           type: 'calendar',
         })
         created.push(r)
-      } catch (err: any) {
-        failed.push({ index: i, error: err?.message || 'unknown error' })
+      } catch (err) {
+        failed.push({ index: i, error: err instanceof Error ? err.message : 'unknown error' })
       }
     }
-    let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
-    if (created.length > 0) {
-      const saved = await pushBotScheduleCreatedMessage(userId, created, { emitSSE: false })
-      if (saved) {
-        savedForAgentDone = {
-          id: saved.id,
-          content: saved.content,
-          createdAt: saved.createdAt.toISOString(),
-        }
-      }
-    }
-
-    return JSON.stringify({
-      message:
-        created.length === 1
-          ? 'สร้างกำหนดการสำเร็จแล้วจ้า!'
-          : `สร้างกำหนดการสำเร็จ ${created.length} รายการแล้วจ้า!`,
-      schedules: created.map((s) => this.formatScheduleForLLM(s)),
-      ...(failed.length > 0 ? { failed } : {}),
-      // When the helper has pre-saved the bot message, tell the agent to skip its own
-      // saveBotMessage and use this saved message in its `done` event instead.
-      ...(savedForAgentDone
-        ? {
-            __suppress_agent_response: true,
-            __agent_saved_message: savedForAgentDone,
-          }
-        : {}),
-    })
+    return { created, failed }
   }
 
   private async handleList(

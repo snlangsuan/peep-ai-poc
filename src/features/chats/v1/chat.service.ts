@@ -13,7 +13,7 @@ export class ChatService {
     })
   }
 
-  async list(userId: string, limit: number = 20): Promise<TChatRawResponse[]> {
-    return this.repository.list(userId, limit)
+  async list(userId: string, limit: number = 20, sessionId?: string): Promise<TChatRawResponse[]> {
+    return this.repository.list(userId, limit, sessionId)
   }
 }

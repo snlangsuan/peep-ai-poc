@@ -3,14 +3,17 @@ import { db } from '#/common/libs/firebase.lib'
 import type { TChatRawResponse } from '#/features/chats/v1/chat.type'
 
 export class ChatRepository {
-  async list(userId: string, limit: number = 20): Promise<TChatRawResponse[]> {
+  async list(userId: string, limit: number = 20, sessionId?: string): Promise<TChatRawResponse[]> {
     const snapshot = await db.collection('chats').where('user_id', '==', userId).get()
 
-    const docs = snapshot.docs.sort((a, b) => {
-      const t1 = a.data().created_at?.toDate?.()?.getTime() || 0
-      const t2 = b.data().created_at?.toDate?.()?.getTime() || 0
-      return t1 - t2
-    })
+    const docs = snapshot.docs
+      // Only return chats belonging to the current session.
+      .filter((doc) => !sessionId || doc.data().session_id === sessionId)
+      .sort((a, b) => {
+        const t1 = a.data().created_at?.toDate?.()?.getTime() || 0
+        const t2 = b.data().created_at?.toDate?.()?.getTime() || 0
+        return t1 - t2
+      })
 
     return docs.slice(-limit).map((doc) => {
       const data = doc.data()

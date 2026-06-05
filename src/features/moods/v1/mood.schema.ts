@@ -9,6 +9,9 @@ export const emotionSchema = z.enum(['great', 'good', 'okay', 'low', 'bad'])
 export const moodCreatePayloadSchema = z.object({
   emotion: emotionSchema,
   note: z.string().optional().nullable(),
+  // Optional mood-card session id. When provided, the server verifies the card
+  // has not been used yet (one mood per card) before saving.
+  sid: z.string().optional(),
 })
 
 export const moodResponseSchema = z.object({

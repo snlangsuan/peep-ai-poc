@@ -6,6 +6,9 @@ import { sseBroker } from '#/common/services/sse-broker.service'
 import { chatItemResponseSchema } from '#/features/chats/v1/chat.schema'
 import { mapRawChatToResponse } from '#/features/chats/v1/chat.mapper'
 import { createMoodCardChat, pushBotMoodResultMessage } from '#/features/chats/v1/mood-card.helper'
+import { getCurrentSessionId, startNewSession } from '#/features/chats/v1/chat-session.helper'
+import { pushDailyFortune } from '#/features/chats/v1/fortune-card.helper'
+import { pushMonthlySummary } from '#/features/chats/v1/summary-card.helper'
 import { db } from '#/common/libs/firebase.lib'
 import { getUtcTime, getLocalTime } from '#/common/utils/datetime.util'
 
@@ -28,8 +31,22 @@ export class ChatController {
     const userId = c.get('user_id')
     const body = c.req.valid('json')
 
+    // "/clear" is a command, not a message: start a fresh session and skip the agent.
+    if (this.isClearCommand(body.content)) {
+      const sessionId = await startNewSession(userId)
+      sseBroker.emit(userId, { type: 'session_cleared', session_id: sessionId })
+      return c.json({ success: true, session_id: sessionId })
+    }
+
     await this.service.send(userId, body.content)
     return c.json<TSuccessResponse>(successResponseSchema.parse({}))
+  }
+
+  /** A message is the "/clear" command when it is a single text part equal to "/clear". */
+  private isClearCommand(content: TChatCreatePayload['content']): boolean {
+    if (!Array.isArray(content) || content.length !== 1) return false
+    const [part] = content
+    return part?.type === 'text' && typeof part.text === 'string' && part.text.trim() === '/clear'
   }
 
   list = async <
@@ -42,7 +59,8 @@ export class ChatController {
     const userId = c.get('user_id')
     const query = c.req.valid('query')
     const limit = query.limit
-    const rawItems = await this.service.list(userId, limit)
+    const sessionId = await getCurrentSessionId(userId)
+    const rawItems = await this.service.list(userId, limit, sessionId)
 
     const items = rawItems.map((item) => mapRawChatToResponse(item))
 
@@ -104,6 +122,20 @@ export class ChatController {
     const body = c.req.valid('json')
     const action = body.action
 
+    // Fortune-telling is handled directly (no LLM turn): check the saved
+    // birthdate, then either ask for it or push today's fortune card.
+    if (action === 'fortune-telling') {
+      const status = await pushDailyFortune(userId)
+      return c.json<TSuccessResponse>(successResponseSchema.parse({ success: true, status }))
+    }
+
+    // Monthly summary is also handled directly: build this month's summary card
+    // and push it via SSE + Firestore.
+    if (action === 'summary') {
+      await pushMonthlySummary(userId)
+      return c.json<TSuccessResponse>(successResponseSchema.parse({ success: true }))
+    }
+
     let promptText = ''
     switch (action) {
       case 'expense':
@@ -117,12 +149,6 @@ export class ChatController {
         break
       case 'mood':
         promptText = 'ช่วยสรุปอารมณ์ (mood) ของผมในช่วง 7 วันล่าสุดให้หน่อยนะจ๊ะ'
-        break
-      case 'summary':
-        promptText = 'ช่วยวิเคราะห์สรุปข้อมูลภาพรวมของโครงการให้หน่อยนะจ๊ะ'
-        break
-      case 'fortune-telling':
-        promptText = 'ช่วยทำนายดวงชะตาให้ผมหน่อยนะจ๊ะ'
         break
     }
 

@@ -1,9 +1,10 @@
 import { getLocalTime, getUtcTime } from '#/common/utils/datetime.util'
 import { getUUID } from '#/common/utils/helper.util'
 
-import type { MoodRepository } from '#/features/moods/v1/mood.repository'
+import type { MoodRepository, TMoodSidClaim } from '#/features/moods/v1/mood.repository'
 import type {
   IMoodEntity,
+  TEmotion,
   TMoodCreatePayload,
   TMoodFilterPayload,
   TMoodItemResponse,
@@ -15,6 +16,10 @@ export class MoodService {
 
   constructor(repository: MoodRepository) {
     this.repository = repository
+  }
+
+  async claimMoodSid(sid: string, userId: string, emotion: TEmotion): Promise<TMoodSidClaim> {
+    return this.repository.claimMoodSid(sid, userId, emotion)
   }
 
   async create(userId: string, body: TMoodCreatePayload): Promise<TMoodResponse> {

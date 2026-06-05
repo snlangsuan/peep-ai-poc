@@ -68,6 +68,8 @@ const baseChatMessageScheduleContentSchema = z.object({
       created_at: z.string(),
     }),
   ),
+  // Actual total number of items (items[] may be truncated for display).
+  item_count: z.number().optional(),
 })
 
 const baseChatMessageExpenseContentSchema = z.object({
@@ -86,6 +88,8 @@ const baseChatMessageExpenseContentSchema = z.object({
     }),
   ),
   total: z.number(),
+  // Actual total number of items (items[] may be truncated for display).
+  item_count: z.number().optional(),
 })
 
 const baseChatMessageTodoContentSchema = z.object({
@@ -101,6 +105,8 @@ const baseChatMessageTodoContentSchema = z.object({
       created_at: z.string(),
     }),
   ),
+  // Actual total number of items (items[] may be truncated for display).
+  item_count: z.number().optional(),
 })
 
 export const chatMessageInputContentSchema = z.discriminatedUnion('type', [
@@ -109,6 +115,47 @@ export const chatMessageInputContentSchema = z.discriminatedUnion('type', [
   baseChatMessageFileContentSchema,
   baseChatMessageLinkContentSchema,
 ])
+
+const chatFortuneAspectSchema = z.object({
+  reading: z.string(),
+  caution: z.string().optional(),
+})
+
+const baseChatMessageFortuneContentSchema = z.object({
+  type: z.literal('fortune-telling'),
+  created_at: z.string(),
+  date: z.string(),
+  sign_name: z.string(),
+  sign_key: z.string(),
+  date_range: z.string(),
+  tagline: z.string(),
+  work: chatFortuneAspectSchema,
+  love: chatFortuneAspectSchema,
+  finance: chatFortuneAspectSchema,
+  lucky_numbers: z.array(z.number()),
+  lucky_color: z.string(),
+  lucky_time: z.string(),
+  energy_level: z.number(),
+  energy: z.string(),
+})
+
+const baseChatMessageMonthlySummaryContentSchema = z.object({
+  type: z.literal('monthly-summary'),
+  created_at: z.string(),
+  month: z.string(),
+  year: z.string(),
+  title: z.string(),
+  content: z.object({
+    todo_count: z.number(),
+    todo_completed: z.number(),
+    schedule_count: z.number(),
+    expense_count: z.number(),
+    expense_total: z.number(),
+    mood: z.array(z.object({ id: z.string(), count: z.number() })),
+    highlight: z.array(z.string()),
+    recommend: z.string(),
+  }),
+})
 
 export const chatMessageResponseContentSchema = z.discriminatedUnion('type', [
   baseChatMessageTextContentSchema,
@@ -119,6 +166,8 @@ export const chatMessageResponseContentSchema = z.discriminatedUnion('type', [
   baseChatMessageScheduleContentSchema,
   baseChatMessageExpenseContentSchema,
   baseChatMessageTodoContentSchema,
+  baseChatMessageFortuneContentSchema,
+  baseChatMessageMonthlySummaryContentSchema,
 ])
 
 export const chatCreatePayloadSchema = z.object({
@@ -198,6 +247,7 @@ export const chatSseEventSchema = z.discriminatedUnion('type', [
     code: z.string().optional(),
     bot_message_id: z.string().optional(),
   }),
+  z.object({ type: z.literal('session_cleared'), session_id: z.string() }),
 ])
 
 export const chatActionPayloadSchema = z.object({

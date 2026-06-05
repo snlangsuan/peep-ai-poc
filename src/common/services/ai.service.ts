@@ -28,6 +28,7 @@ export class AIService {
       tools?: Tool[]
       temperature?: number
       responseMimeType?: string
+      thinkingBudget?: number
     },
   ): Promise<GenerateContentResponse> {
     try {
@@ -41,6 +42,9 @@ export class AIService {
           tools: options?.tools,
           temperature: options?.temperature ?? 0.7,
           responseMimeType: options?.responseMimeType,
+          // Disable Gemini "thinking" mode by default to reduce latency.
+          // Callers can re-enable by passing a positive thinkingBudget.
+          thinkingConfig: { thinkingBudget: options?.thinkingBudget ?? 0 },
         },
       })
 

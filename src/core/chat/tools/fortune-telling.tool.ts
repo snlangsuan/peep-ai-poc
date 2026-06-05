@@ -1,11 +1,19 @@
 import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
+import {
+  ASK_BIRTHDATE_MESSAGE,
+  FORTUNE_UNAVAILABLE_MESSAGE,
+  resolveDailyFortune,
+  saveFortuneChat,
+} from '#/features/chats/v1/fortune-card.helper'
+import { ZODIAC_SIGNS, getSignKeyByBirthdate } from '#/features/horoscopes/v1/horoscope.constant'
 
 import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class FortuneTellingTool implements IChatTool {
   readonly name = 'fortune_telling'
-  readonly description = 'ทำนายดวงชะตาของผู้ใช้ โดยจะตรวจสอบวันเกิดก่อน หากยังไม่มีจะถามข้อมูล และเมื่อมีแล้วจะสร้าง Action Link เพื่อเปิดหน้าทำนายดวงบนแอปพลิเคชัน'
+  readonly description =
+    'ทำนายดวงชะตาประจำวันของผู้ใช้ โดยจะตรวจสอบวันเกิดก่อน หากยังไม่มีจะถามข้อมูล และเมื่อมีแล้วจะดึงคำทำนายประจำวันตามราศีมาแสดงเป็นการ์ดให้ผู้ใช้'
   readonly parameters = {
     type: 'OBJECT',
     properties: {
@@ -30,32 +38,10 @@ export class FortuneTellingTool implements IChatTool {
   ): Promise<string> {
     const { action, birthdate } = args
     const userId = context.userId
-    const docRef = db.collection('user_memories').doc(userId)
 
     try {
       if (action === 'check_and_start') {
-        const doc = await docRef.get()
-        const memories = (doc.data()?.memories || {}) as Record<string, string>
-        const storedBirthdate = memories.birthdate
-
-        if (storedBirthdate) {
-          logger.info({ userId, birthdate: storedBirthdate }, 'Found stored birthdate for fortune telling.')
-          return JSON.stringify({
-            status: 'success',
-            has_birthdate: true,
-            birthdate: storedBirthdate,
-            type: 'action',
-            link: 'peep://fortune-telling',
-            message: `โหลดวันเดือนปีเกิดของคุณ (${storedBirthdate}) สำเร็จแล้วจ้า! พร้อมเปิดหน้าทำนายดวงชะตาให้แล้วน้า!`,
-          })
-        }
-
-        logger.info({ userId }, 'No birthdate found for fortune telling.')
-        return JSON.stringify({
-          status: 'need_birthdate',
-          has_birthdate: false,
-          message: 'น้องคลาวดี้ยังไม่ทราบวันเดือนปีเกิดของคุณเลยจ้า ช่วยบอกวันเดือนปีเกิดของคุณ (ในรูปแบบ เช่น 25 ธันวาคม 2538 หรือ 1995-12-25) ให้น้องหน่อยนะจ๊ะ! จะได้นำไปดูดวงชะตาได้แม่นยำจ้า',
-        })
+        return await this.produceFortune(userId)
       }
 
       if (action === 'save_birthdate') {
@@ -63,29 +49,59 @@ export class FortuneTellingTool implements IChatTool {
           return JSON.stringify({ error: 'Missing required field: "birthdate" is required when action is "save_birthdate".' })
         }
 
-        // Save birthdate into user_memories inside Firestore
+        // Convert the birthdate to a zodiac sign (using the in-code date ranges)
+        // and store both, so the sign is ready to use without recomputing.
+        const signKey = getSignKeyByBirthdate(birthdate)
+        const signName = signKey ? ZODIAC_SIGNS.find((s) => s.key === signKey)?.name : undefined
+
+        const docRef = db.collection('user_memories').doc(userId)
         await db.runTransaction(async (transaction) => {
           const doc = await transaction.get(docRef)
           const memories = (doc.data()?.memories || {}) as Record<string, string>
           memories.birthdate = birthdate
-          memories._chat_summary_count = memories._chat_summary_count || '0'
+          if (signKey) memories.zodiac_sign = signKey
+          if (signName) memories.zodiac_sign_name = signName
           transaction.set(docRef, { memories }, { merge: true })
         })
+        logger.info({ userId, birthdate, signKey }, 'Saved birthdate + zodiac sign for fortune telling.')
 
-        logger.info({ userId, birthdate }, 'Saved new birthdate for fortune telling.')
-        return JSON.stringify({
-          status: 'success',
-          has_birthdate: true,
-          birthdate,
-          type: 'action',
-          link: 'peep://fortune-telling',
-          message: `บันทึกวันเกิดเป็นวันที่ ${birthdate} สำเร็จแล้วจ้า! ยินดีต้อนรับเข้าสู่หน้าทำนายดวงชะตาของคุณนะจ๊ะ!`,
-        })
+        // Birthdate is now stored — go straight to producing today's fortune.
+        return await this.produceFortune(userId)
       }
 
       return JSON.stringify({ error: `Unsupported action: "${action}"` })
-    } catch (err: any) {
-      return JSON.stringify({ error: err.message || 'Something went wrong while executing fortune telling.' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong while executing fortune telling.'
+      return JSON.stringify({ error: message })
     }
+  }
+
+  /**
+   * Resolves today's fortune for the user. If no/invalid birthdate, returns a
+   * message asking for it (the agent relays it). If ready, pre-saves the fortune
+   * card chat and signals the agent to use it as the final message.
+   */
+  private async produceFortune(userId: string): Promise<string> {
+    const result = await resolveDailyFortune(userId)
+
+    if (result.status === 'need_birthdate') {
+      return JSON.stringify({ status: 'need_birthdate', has_birthdate: false, message: ASK_BIRTHDATE_MESSAGE })
+    }
+    if (result.status === 'unavailable') {
+      return JSON.stringify({ status: 'unavailable', message: FORTUNE_UNAVAILABLE_MESSAGE })
+    }
+
+    // Pre-save the card (no SSE here — the agent emits the `done` event from it).
+    const saved = await saveFortuneChat(userId, result.content, { emitSSE: false })
+    logger.info({ userId, chatId: saved.id }, '[fortune] pre-saved daily fortune card for agent done event')
+    return JSON.stringify({
+      status: 'success',
+      __suppress_agent_response: true,
+      __agent_saved_message: {
+        id: saved.id,
+        content: saved.content,
+        createdAt: saved.createdAt.toISOString(),
+      },
+    })
   }
 }

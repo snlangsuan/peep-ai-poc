@@ -53,6 +53,11 @@ jobs:
           echo "GOOGLE_GEMINI_CHAT_MODEL=${{ secrets.GOOGLE_GEMINI_CHAT_MODEL || 'gemini-3.1-flash-lite' }}" >> .env
           echo "GOOGLE_GEMINI_EXTRACT_MODEL=${{ secrets.GOOGLE_GEMINI_EXTRACT_MODEL || 'gemini-2.5-flash-lite' }}" >> .env
           echo "FIREBASE_DATABASE_URL=${{ secrets.FIREBASE_DATABASE_URL }}" >> .env
+          echo "WEB_SEARCH_API_URL=${{ secrets.WEB_SEARCH_API_URL || 'https://ai-hub.peepshare.me/api/tool/search' }}" >> .env
+          echo "CHAT_PROVIDER=${{ secrets.CHAT_PROVIDER || 'gemini' }}" >> .env
+          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+          echo "OPENAI_BASE_URL=${{ secrets.OPENAI_BASE_URL }}" >> .env
+          echo "OPENAI_CHAT_MODEL=${{ secrets.OPENAI_CHAT_MODEL || 'gpt-4o-mini' }}" >> .env
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -113,7 +118,7 @@ jobs:
               --restart always \
               --add-host=host.docker.internal:host-gateway \
               -p 8500:8000 \
-              --health-cmd="curl -f http://localhost:8000/api/v1/health || exit 1" \
+              --health-cmd="curl -f http://localhost:8000/poc/api/v1/health || exit 1" \
               --health-interval=30s \
               --health-timeout=10s \
               --health-retries=3 \

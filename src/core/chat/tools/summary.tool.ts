@@ -1,22 +1,42 @@
+import { logger } from '#/common/libs/logger.lib'
+import { resolveMonthlySummary, saveSummaryChat } from '#/features/chats/v1/summary-card.helper'
+
 import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class SummaryTool implements IChatTool {
   readonly name = 'summary_tool'
-  readonly description = 'วิเคราะห์สรุปข้อมูลประวัติการพูดคุย การเงิน หรือแผนภาพรวมของผู้ใช้งาน (ขณะนี้เป็นฟังก์ชันโครงร่างชั่วคราว)'
+  readonly description =
+    'สรุปภาพรวมข้อมูลของผู้ใช้ในเดือนปัจจุบัน (todo, นัดหมาย, ค่าใช้จ่าย, อารมณ์) แล้วแสดงเป็นการ์ดสรุปภาพรวมประจำเดือน'
   readonly parameters = {
     type: 'OBJECT',
     properties: {
       query: {
         type: 'STRING',
-        description: 'คำร้องขอเกี่ยวกับบทสรุปย่อหรือข้อมูลสถิติ',
+        description: 'คำร้องขอเกี่ยวกับบทสรุปภาพรวม (optional)',
       },
     },
   }
 
-  async execute(args: { query?: string }, context: IChatContext): Promise<string> {
-    return JSON.stringify({
-      status: 'placeholder',
-      message: 'น้องคลาวดี้ได้รับคำร้องขอให้สรุปข้อมูลภาพรวมเรียบร้อยแล้วจ้า! ☁️✨\n\n(นี่คือระบบสรุปข้อมูลร่างชั่วคราวเพื่อเตรียมเชื่อมโยงระบบวิเคราะห์เชิงลึกทางการเงินแบบเรียลไทม์ในอนาคตอันใกล้จ้า!)',
-    })
+  async execute(_args: { query?: string }, context: IChatContext): Promise<string> {
+    const userId = context.userId
+    try {
+      // Build this month's summary, pre-save it, and let the agent emit the
+      // `done` event from the pre-saved card (no duplicate agent text).
+      const content = await resolveMonthlySummary(userId)
+      const saved = await saveSummaryChat(userId, content, { emitSSE: false })
+      logger.info({ userId, chatId: saved.id }, '[summary] pre-saved monthly summary card for agent done event')
+      return JSON.stringify({
+        status: 'success',
+        __suppress_agent_response: true,
+        __agent_saved_message: {
+          id: saved.id,
+          content: saved.content,
+          createdAt: saved.createdAt.toISOString(),
+        },
+      })
+    } catch (error) {
+      logger.error({ error, userId }, '[summary] failed to build monthly summary')
+      return JSON.stringify({ error: 'สรุปภาพรวมไม่สำเร็จ ลองใหม่อีกครั้งในภายหลัง' })
+    }
   }
 }

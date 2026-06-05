@@ -5,6 +5,7 @@ import { AIService } from '#/common/services/ai.service'
 import { sseBroker } from '#/common/services/sse-broker.service'
 import { getUUID } from '#/common/utils/helper.util'
 import { mapRawChatToResponse } from '#/features/chats/v1/chat.mapper'
+import { getCurrentSessionId } from '#/features/chats/v1/chat-session.helper'
 import { envVariables } from '#/factory'
 
 export const MOOD_OPTION_IDS = ['great', 'good', 'okay', 'low', 'bad'] as const
@@ -33,6 +34,7 @@ export async function createMoodCardChat(userId: string): Promise<ICreatedMoodCa
   const options = buildMoodOptions(sid)
   const docRef = db.collection('chats').doc()
   const createdAt = new Date()
+  const sessionId = await getCurrentSessionId(userId)
   const content = [
     {
       type: 'mood_card' as const,
@@ -42,6 +44,7 @@ export async function createMoodCardChat(userId: string): Promise<ICreatedMoodCa
   ]
   await docRef.set({
     user_id: userId,
+    session_id: sessionId,
     sender_id: 'bot',
     content,
     feedback: null,
@@ -128,9 +131,11 @@ export async function pushBotTextMessage(userId: string, text: string): Promise<
   try {
     const docRef = db.collection('chats').doc()
     const createdAt = new Date()
+    const sessionId = await getCurrentSessionId(userId)
     const content = [{ type: 'text' as const, text }]
     await docRef.set({
       user_id: userId,
+      session_id: sessionId,
       sender_id: 'bot',
       content,
       feedback: null,
@@ -183,8 +188,10 @@ export async function pushBotMoodResultMessage(
 
     const docRef = db.collection('chats').doc()
     const docCreatedAt = new Date()
+    const sessionId = await getCurrentSessionId(userId)
     await docRef.set({
       user_id: userId,
+      session_id: sessionId,
       sender_id: 'bot',
       content,
       feedback: null,

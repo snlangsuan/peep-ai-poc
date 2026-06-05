@@ -4,6 +4,7 @@ import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
 import { sseBroker } from '#/common/services/sse-broker.service'
 import { getLocalTime } from '#/common/utils/datetime.util'
+import { getCurrentSessionId } from '#/features/chats/v1/chat-session.helper'
 
 import type { IScheduleModule } from '#/worker/schedule/schedule.type'
 import type { Dayjs } from 'dayjs'
@@ -189,8 +190,10 @@ export class CheckSchedulesModule implements IScheduleModule {
   private async saveAndEmitNotification(userId: string, text: string): Promise<void> {
     const content = [{ type: 'text' as const, text }]
     const createdAt = new Date()
+    const sessionId = await getCurrentSessionId(userId)
     const docRef = await db.collection('chats').add({
       user_id: userId,
+      session_id: sessionId,
       sender_id: 'bot',
       content,
       feedback: null,

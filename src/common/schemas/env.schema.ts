@@ -26,5 +26,5 @@ export const envSchema = z.object({
   OPENAI_BASE_URL: z.string().optional(),
   OPENAI_CHAT_MODEL: z.string().default('gpt-4o-mini'),
   CHAT_PROVIDER: z.enum(['gemini', 'openai']).default('gemini'),
-  WEB_SEARCH_API_URL: z.string().default('https://ai-hub.peepshare.me/api/websearch'),
+  WEB_SEARCH_API_URL: z.string().default('https://ai-hub.peepshare.me/api/tool/search'),
 })

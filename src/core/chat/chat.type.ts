@@ -103,6 +103,11 @@ export interface IChatAgentResult {
 
 export interface IChatAgentOptions {
   userId: string
+  /**
+   * Active chat session id. When set, persisted chat docs are stamped with it
+   * and history/multi-turn loading is scoped to this session only.
+   */
+  sessionId?: string
   history?: Content[]
   /**
    * Persona: บุคลิก น้ำเสียง และสไตล์การตอบของ Agent

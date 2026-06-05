@@ -2,6 +2,8 @@ import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
 import { sseBroker } from '#/common/services/sse-broker.service'
 import { mapRawChatToResponse } from '#/features/chats/v1/chat.mapper'
+import { getCurrentSessionId } from '#/features/chats/v1/chat-session.helper'
+import { LIST_CARD_MAX_ITEMS } from '#/features/chats/v1/schedule-notify.helper'
 
 import type { TExpenseResponse } from '#/features/expenses/v1/expense.type'
 import type { IPushBotChatResult, IPushBotOptions } from '#/features/chats/v1/schedule-notify.helper'
@@ -17,8 +19,10 @@ async function saveChatBotMessage(
 ): Promise<{ id: string; createdAt: Date }> {
   const docRef = db.collection('chats').doc()
   const createdAt = new Date()
+  const sessionId = await getCurrentSessionId(userId)
   await docRef.set({
     user_id: userId,
+    session_id: sessionId,
     sender_id: 'bot',
     content,
     feedback: null,
@@ -98,7 +102,10 @@ export async function pushBotExpenseListMessage(
 
   try {
     const createdAtIso = new Date().toISOString()
-    const items = input.expenses.map((e) => ({
+    const totalCount = input.expenses.length
+    // Total amount is summed over ALL expenses, not just the displayed slice.
+    const total = input.expenses.reduce((sum, e) => sum + (e.amount ?? 0), 0)
+    const items = input.expenses.slice(0, LIST_CARD_MAX_ITEMS).map((e) => ({
       uuid: e.uuid,
       subject: e.subject,
       amount: e.amount,
@@ -106,15 +113,15 @@ export async function pushBotExpenseListMessage(
       date: e.date,
       created_at: e.created_at || createdAtIso,
     }))
-    const total = items.reduce((sum, it) => sum + (it.amount ?? 0), 0)
     const content: TChatResponse['content'] = [
       {
         type: 'expense',
         title: EXPENSE_LIST_CARD_TITLE,
-        subtitle: `${items.length} รายการ`,
+        subtitle: `${totalCount} รายการ`,
         created_at: createdAtIso,
         items,
         total,
+        item_count: totalCount,
       },
     ]
 

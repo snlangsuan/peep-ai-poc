@@ -8,7 +8,7 @@ export const createDoc: ReturnType<typeof describeRoute> = describeRoute({
   tags: [ERouteTag.MOOD],
   summary: 'Create a mood record',
   description:
-    'Records the current mood of the authenticated user. The server stamps today\'s local date automatically — clients only provide `emotion` (required) and optional `note`.',
+    'Records the current mood of the authenticated user. The server stamps today\'s local date automatically — clients provide `emotion` (required) and optional `note`. An optional mood-card `sid` may be supplied; if so, the server verifies the card has not already been used (returns 409 if it has) before saving.',
   security: [{ ApiKeyAuth: [] }],
   responses: {
     200: {

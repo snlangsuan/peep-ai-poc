@@ -27,6 +27,22 @@ export class MoodController {
   ): Promise<Response> => {
     const userId = c.get('user_id')
     const body = c.req.valid('json')
+
+    // If a mood-card sid is supplied, verify it hasn't been used yet (one mood
+    // per card). If already used, reject; otherwise claim it and continue.
+    if (body.sid) {
+      const claim = await this.service.claimMoodSid(body.sid, userId, body.emotion)
+      if (claim.status === 'not_found') {
+        return c.json({ error: 'ลิงก์ไม่ถูกต้องหรือหมดอายุแล้ว ☁️' }, 404)
+      }
+      if (claim.status === 'forbidden') {
+        return c.json({ error: 'คุณไม่มีสิทธิ์ใช้การ์ดใบนี้ ☁️' }, 403)
+      }
+      if (claim.status === 'already_used') {
+        return c.json({ error: 'คุณบันทึกอารมณ์จากการ์ดใบนี้ไปแล้ว ☁️✨' }, 409)
+      }
+    }
+
     const result = await this.service.create(userId, body)
 
     void pushBotMoodResultMessage(userId, {

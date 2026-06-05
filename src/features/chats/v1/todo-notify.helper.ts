@@ -2,6 +2,8 @@ import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
 import { sseBroker } from '#/common/services/sse-broker.service'
 import { mapRawChatToResponse } from '#/features/chats/v1/chat.mapper'
+import { getCurrentSessionId } from '#/features/chats/v1/chat-session.helper'
+import { LIST_CARD_MAX_ITEMS } from '#/features/chats/v1/schedule-notify.helper'
 
 import type { TTodoResponse } from '#/features/todos/v1/todo.type'
 import type { IPushBotChatResult, IPushBotOptions } from '#/features/chats/v1/schedule-notify.helper'
@@ -17,8 +19,10 @@ async function saveChatBotMessage(
 ): Promise<{ id: string; createdAt: Date }> {
   const docRef = db.collection('chats').doc()
   const createdAt = new Date()
+  const sessionId = await getCurrentSessionId(userId)
   await docRef.set({
     user_id: userId,
+    session_id: sessionId,
     sender_id: 'bot',
     content,
     feedback: null,
@@ -88,7 +92,8 @@ export async function pushBotTodoListMessage(
 
   try {
     const createdAtIso = new Date().toISOString()
-    const items = todos.map((t) => ({
+    const totalCount = todos.length
+    const items = todos.slice(0, LIST_CARD_MAX_ITEMS).map((t) => ({
       uuid: t.uuid,
       title: t.title,
       completed: t.completed,
@@ -98,9 +103,10 @@ export async function pushBotTodoListMessage(
       {
         type: 'todo',
         title: TODO_LIST_CARD_TITLE,
-        subtitle: `${items.length} รายการ`,
+        subtitle: `${totalCount} รายการ`,
         created_at: createdAtIso,
         items,
+        item_count: totalCount,
       },
     ]
 

@@ -63,6 +63,8 @@ export class ChatAgent {
   // Configurations
   private provider: 'gemini' | 'openai'
   private userId: string
+  /** Active chat session id; stamped on persisted docs and used to scope history. */
+  private sessionId: string | undefined
   private tokensPerCredit: number
   private persistHistory: boolean
   private persistMemory: boolean
@@ -106,6 +108,7 @@ export class ChatAgent {
       })
     }
     this.userId = options.userId
+    this.sessionId = options.sessionId
     this.history = options.history ?? []
     this.persona = options.persona ?? DEFAULT_PERSONA
     this.systemInstruction = options.systemInstruction ?? AGENT_SYSTEM_INSTRUCTION
@@ -1132,11 +1135,14 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     try {
       const snapshot = await db.collection('chats').where('user_id', '==', this.userId).get()
 
-      const docs = snapshot.docs.sort((a, b) => {
-        const t1 = a.data().created_at?.toDate?.()?.getTime() || 0
-        const t2 = b.data().created_at?.toDate?.()?.getTime() || 0
-        return t1 - t2
-      })
+      const docs = snapshot.docs
+        // Scope multi-turn context to the current session only.
+        .filter((doc) => !this.sessionId || doc.data().session_id === this.sessionId)
+        .sort((a, b) => {
+          const t1 = a.data().created_at?.toDate?.()?.getTime() || 0
+          const t2 = b.data().created_at?.toDate?.()?.getTime() || 0
+          return t1 - t2
+        })
 
       if (docs.length <= ChatAgent.HISTORY_WINDOW) {
         this.history = docs.map((doc) => {
@@ -1289,7 +1295,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
           ...(options?.code ? { code: options.code } : {}),
         },
       }
-      await docRef.set({ user_id: this.userId, ...data })
+      await docRef.set({ user_id: this.userId, ...(this.sessionId ? { session_id: this.sessionId } : {}), ...data })
       return { id: docRef.id, ...data }
     } catch (error) {
       logger.error({ error }, 'Failed to save bot error message to Firestore')
@@ -1309,6 +1315,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         feedback: null,
         error: null,
         created_at: createdAt,
+        ...(this.sessionId ? { session_id: this.sessionId } : {}),
       })
       return {
         id: docRef.id,
@@ -1484,7 +1491,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
           : {}),
       }
       savedBotMessage = { id: botDocRef.id, ...botData }
-      await botDocRef.set({ user_id: this.userId, ...botData })
+      await botDocRef.set({ user_id: this.userId, ...(this.sessionId ? { session_id: this.sessionId } : {}), ...botData })
 
       let remaining = 0
       if (usage && usage.creditsUsed > 0) {
@@ -1516,7 +1523,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       if (doc.exists) {
         const data = doc.data()
         const memories = (data?.memories || {}) as Record<string, string>
-        const keys = Object.keys(memories)
+        // Exclude internal bookkeeping keys (e.g. _chat_summary) from the profile.
+        const keys = Object.keys(memories).filter((k) => !k.startsWith('_'))
         if (keys.length > 0) {
           return '\nUser Memories Profile:\n' + keys.map((k) => `- ${k}: ${memories[k]}`).join('\n')
         }

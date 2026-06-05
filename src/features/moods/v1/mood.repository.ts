@@ -1,9 +1,46 @@
 import { db } from '#/common/libs/firebase.lib'
+import { getUtcTime } from '#/common/utils/datetime.util'
 
-import type { IMoodEntity, TMoodFilterPayload } from '#/features/moods/v1/mood.type'
+import type { IMoodEntity, TEmotion, TMoodFilterPayload } from '#/features/moods/v1/mood.type'
 import type admin from 'firebase-admin'
 
+export type TMoodSidClaim =
+  | { status: 'not_found' }
+  | { status: 'forbidden' }
+  | { status: 'already_used'; userId: string }
+  | { status: 'claimed'; userId: string }
+
 export class MoodRepository {
+  /**
+   * Atomically claims a mood-card by its `sid` (`mood_sid` on the chats doc).
+   * Read-check-update inside a transaction so concurrent requests for the same
+   * sid can't both pass the `mood_used` check. Mirrors the chat mood-link flow.
+   * Verifies the card belongs to `userId` before claiming.
+   */
+  async claimMoodSid(sid: string, userId: string, emotion: TEmotion): Promise<TMoodSidClaim> {
+    const snapshot = await db.collection('chats').where('mood_sid', '==', sid).limit(1).get()
+    if (snapshot.empty) return { status: 'not_found' }
+
+    const docRef = snapshot.docs[0]!.ref
+    const now = getUtcTime().toDate()
+
+    return db.runTransaction(async (tx) => {
+      const fresh = await tx.get(docRef)
+      const freshData = fresh.data()
+      if (!freshData) return { status: 'not_found' }
+      if (freshData.user_id !== userId) return { status: 'forbidden' }
+      if (freshData.mood_used === true) {
+        return { status: 'already_used', userId: freshData.user_id as string }
+      }
+      tx.update(docRef, {
+        mood_used: true,
+        mood_selected: emotion,
+        mood_selected_at: now,
+      })
+      return { status: 'claimed', userId: freshData.user_id as string }
+    })
+  }
+
   async create(input: IMoodEntity): Promise<IMoodEntity> {
     await db
       .collection('user_moods')

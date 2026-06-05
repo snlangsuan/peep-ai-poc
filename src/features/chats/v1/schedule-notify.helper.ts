@@ -2,6 +2,7 @@ import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
 import { sseBroker } from '#/common/services/sse-broker.service'
 import { mapRawChatToResponse } from '#/features/chats/v1/chat.mapper'
+import { getCurrentSessionId } from '#/features/chats/v1/chat-session.helper'
 
 import type { TScheduleResponse } from '#/features/schedules/v1/schedule.type'
 import type { TChatResponse } from '#/features/chats/v1/chat.type'
@@ -9,6 +10,9 @@ import type { TChatResponse } from '#/features/chats/v1/chat.type'
 const SCHEDULE_SAVED_TEXT = 'บันทึกนัดหมายเรียบร้อยแล้ว'
 const SCHEDULE_CARD_TITLE = 'ตารางนัดหมาย'
 const SCHEDULE_LIST_CARD_TITLE = 'ตารางนัดหมาย'
+
+/** Max items shown in a list card; the card also carries the real item_count. */
+export const LIST_CARD_MAX_ITEMS = 5
 
 export interface IPushBotChatResult {
   id: string
@@ -28,8 +32,10 @@ async function saveChatBotMessage(
 ): Promise<{ id: string; createdAt: Date }> {
   const docRef = db.collection('chats').doc()
   const createdAt = new Date()
+  const sessionId = await getCurrentSessionId(userId)
   await docRef.set({
     user_id: userId,
+    session_id: sessionId,
     sender_id: 'bot',
     content,
     feedback: null,
@@ -99,7 +105,8 @@ export async function pushBotScheduleListMessage(
 
   try {
     const createdAtIso = new Date().toISOString()
-    const items = schedules.map((s) => ({
+    const totalCount = schedules.length
+    const items = schedules.slice(0, LIST_CARD_MAX_ITEMS).map((s) => ({
       uuid: s.uuid,
       title: s.payload.title,
       scheduled_at: s.scheduled_at,
@@ -109,9 +116,10 @@ export async function pushBotScheduleListMessage(
       {
         type: 'schedule',
         title: SCHEDULE_LIST_CARD_TITLE,
-        subtitle: `${items.length} รายการ`,
+        subtitle: `${totalCount} รายการ`,
         created_at: createdAtIso,
         items,
+        item_count: totalCount,
       },
     ]
 

@@ -71,6 +71,27 @@ export class ScheduleService {
     }
   }
 
+  /**
+   * Returns the user's existing schedules whose time range overlaps the given
+   * one. A schedule without `end_at` is treated as a single point in time.
+   * Times are compared as absolute instants (ISO/UTC).
+   */
+  async findOverlapping(userId: string, scheduledAt: string, endAt?: string | null): Promise<TScheduleResponse[]> {
+    const newStart = new Date(scheduledAt).getTime()
+    if (Number.isNaN(newStart)) return []
+    const newEnd = endAt ? new Date(endAt).getTime() : newStart
+
+    const { data } = await this.repository.findByUserId(userId)
+    return data.filter((s) => {
+      const exStart = new Date(s.scheduled_at).getTime()
+      if (Number.isNaN(exStart)) return false
+      const exEnd = s.end_at ? new Date(s.end_at).getTime() : exStart
+      // Ranges overlap when they strictly intersect; equal start times (e.g. two
+      // point events at the same moment) are also treated as a conflict.
+      return (newStart < exEnd && exStart < newEnd) || newStart === exStart
+    })
+  }
+
   async getSchedule(userId: string, uuid: string): Promise<TScheduleResponse> {
     const schedule = await this.repository.findById(uuid)
 

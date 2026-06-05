@@ -9,4 +9,5 @@ export enum ERouteTag {
   UID = 'Uid',
   SUMMARY = 'Summary',
   PARSER = 'Parser',
+  HOROSCOPE = 'Horoscope',
 }
