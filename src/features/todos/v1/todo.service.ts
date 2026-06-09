@@ -6,9 +6,10 @@ import { getUUID } from '#/common/utils/helper.util'
 import type { TodoRepository } from '#/features/todos/v1/todo.repository'
 import type {
   ITodoCreateInput,
-  TTodoCreatePayload,
+  TTodoCreateItem,
   TTodoResponse,
-  TTodoUpdatePayload,
+  TTodoUpdateFields,
+  TTodoUpdateItem,
   TTodoFilterPayload,
   TTodoItemResponse,
 } from '#/features/todos/v1/todo.type'
@@ -20,12 +21,26 @@ export class TodoService {
     this.repository = repository
   }
 
-  async create(userId: string, input: TTodoCreatePayload): Promise<TTodoResponse> {
-    const uuid = getUUID()
-    const now = getUtcTime().toISOString()
+  async create(userId: string, input: TTodoCreateItem): Promise<TTodoResponse> {
+    const newTodo = this.buildCreateInput(userId, input, getUtcTime().toISOString())
 
-    const newTodo: ITodoCreateInput = {
-      uuid,
+    await this.repository.create(newTodo)
+
+    return this.toResponse(newTodo)
+  }
+
+  async createMany(userId: string, items: TTodoCreateItem[]): Promise<TTodoResponse[]> {
+    const now = getUtcTime().toISOString()
+    const inputs = items.map((item) => this.buildCreateInput(userId, item, now))
+
+    await this.repository.createMany(inputs)
+
+    return inputs.map((input) => this.toResponse(input))
+  }
+
+  private buildCreateInput(userId: string, input: TTodoCreateItem, now: string): ITodoCreateInput {
+    return {
+      uuid: getUUID(),
       user_id: userId,
       title: input.title,
       description: input.description ?? null,
@@ -33,17 +48,17 @@ export class TodoService {
       created_at: now,
       updated_at: now,
     }
+  }
 
-    await this.repository.create(newTodo)
-
+  private toResponse(input: ITodoCreateInput): TTodoResponse {
     return {
-      uuid: newTodo.uuid,
-      user_id: newTodo.user_id,
-      title: newTodo.title,
-      description: newTodo.description ?? null,
-      completed: newTodo.completed,
-      created_at: newTodo.created_at,
-      updated_at: newTodo.updated_at,
+      uuid: input.uuid,
+      user_id: input.user_id,
+      title: input.title,
+      description: input.description ?? null,
+      completed: input.completed,
+      created_at: input.created_at,
+      updated_at: input.updated_at,
     }
   }
 
@@ -93,7 +108,7 @@ export class TodoService {
     }
   }
 
-  async update(userId: string, uuid: string, input: TTodoUpdatePayload): Promise<TTodoResponse> {
+  async update(userId: string, uuid: string, input: TTodoUpdateFields): Promise<TTodoResponse> {
     const todo = await this.repository.findById(uuid)
 
     if (!todo) {
@@ -104,19 +119,7 @@ export class TodoService {
       throw new InsufficientPermissionException('You do not have permission to access this todo.')
     }
 
-    const fields: Partial<ITodoCreateInput> = {
-      updated_at: getUtcTime().toISOString(),
-    }
-
-    if (input.title !== undefined) {
-      fields.title = input.title
-    }
-    if (input.description !== undefined) {
-      fields.description = input.description ?? null
-    }
-    if (input.completed !== undefined) {
-      fields.completed = input.completed
-    }
+    const fields = this.buildUpdateFields(input, getUtcTime().toISOString())
 
     await this.repository.update(uuid, fields)
 
@@ -134,6 +137,62 @@ export class TodoService {
       created_at: updated.created_at as string,
       updated_at: updated.updated_at as string,
     }
+  }
+
+  async updateMany(userId: string, items: TTodoUpdateItem[]): Promise<TTodoResponse[]> {
+    // Verify ownership of every target up front so the batch is all-or-nothing:
+    // if any todo is missing or not owned by the user, nothing is written.
+    const existing = await Promise.all(items.map((item) => this.repository.findById(item.uuid)))
+
+    existing.forEach((todo, i) => {
+      const uuid = items[i]!.uuid
+      if (!todo) {
+        throw new ObjectNotFoundException(`Todo not found: ${uuid}`)
+      }
+      if (todo.user_id !== userId) {
+        throw new InsufficientPermissionException(`You do not have permission to access todo: ${uuid}`)
+      }
+    })
+
+    const now = getUtcTime().toISOString()
+    const updates = items.map((item) => ({
+      uuid: item.uuid,
+      fields: this.buildUpdateFields(item, now),
+    }))
+
+    await this.repository.updateMany(updates)
+
+    // Merge the applied fields onto the pre-read docs — avoids a second read round-trip.
+    return items.map((item, i) => {
+      const before = existing[i]!
+      return {
+        uuid: item.uuid,
+        user_id: userId,
+        title: (item.title ?? before.title) as string,
+        description: (item.description !== undefined ? (item.description ?? null) : (before.description ?? null)) as
+          | string
+          | null,
+        completed: (item.completed ?? before.completed) as boolean,
+        created_at: before.created_at as string,
+        updated_at: now,
+      }
+    })
+  }
+
+  private buildUpdateFields(input: TTodoUpdateFields, now: string): Partial<ITodoCreateInput> {
+    const fields: Partial<ITodoCreateInput> = { updated_at: now }
+
+    if (input.title !== undefined) {
+      fields.title = input.title
+    }
+    if (input.description !== undefined) {
+      fields.description = input.description ?? null
+    }
+    if (input.completed !== undefined) {
+      fields.completed = input.completed
+    }
+
+    return fields
   }
 
   async delete(userId: string, uuid: string): Promise<void> {

@@ -31,13 +31,7 @@ todosGroup.get('/:id', getDoc, zValidator('param', todoParamPayloadSchema), cont
 
 todosGroup.get('/', listDoc, zValidator('query', todoFilterPayloadSchema), controller.list)
 
-todosGroup.put(
-  '/:id',
-  updateDoc,
-  zValidator('param', todoParamPayloadSchema),
-  zValidator('json', todoUpdatePayloadSchema),
-  controller.update,
-)
+todosGroup.put('/', updateDoc, zValidator('json', todoUpdatePayloadSchema), controller.update)
 
 todosGroup.delete('/:id', deleteDoc, zValidator('param', todoParamPayloadSchema), controller.delete)
 

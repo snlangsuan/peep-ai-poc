@@ -19,6 +19,29 @@ export class TodoRepository {
       })
   }
 
+  async createMany(inputs: ITodoCreateInput[]): Promise<void> {
+    if (inputs.length === 0) return
+
+    // Firestore batches are capped at 500 ops; the create payload caps todos at 50,
+    // but chunk defensively to stay safe regardless of caller.
+    for (let i = 0; i < inputs.length; i += 450) {
+      const batch = db.batch()
+      for (const input of inputs.slice(i, i + 450)) {
+        const ref = db.collection('todos').doc(input.uuid)
+        batch.set(ref, {
+          uuid: input.uuid,
+          user_id: input.user_id,
+          title: input.title,
+          description: input.description ?? null,
+          completed: input.completed,
+          created_at: input.created_at,
+          updated_at: input.updated_at,
+        })
+      }
+      await batch.commit()
+    }
+  }
+
   async findById(uuid: string): Promise<admin.firestore.DocumentData | null> {
     const doc = await db.collection('todos').doc(uuid).get()
     if (!doc.exists) {
@@ -79,6 +102,33 @@ export class TodoRepository {
     }
 
     await db.collection('todos').doc(uuid).update(updateData)
+  }
+
+  async updateMany(updates: Array<{ uuid: string; fields: Partial<ITodoCreateInput> }>): Promise<void> {
+    if (updates.length === 0) return
+
+    // Firestore batches are capped at 500 ops; the update payload caps todos at 50,
+    // but chunk defensively to stay safe regardless of caller.
+    for (let i = 0; i < updates.length; i += 450) {
+      const batch = db.batch()
+      for (const { uuid, fields } of updates.slice(i, i + 450)) {
+        const ref = db.collection('todos').doc(uuid)
+        const updateData: Record<string, any> = {
+          updated_at: fields.updated_at,
+        }
+        if (fields.title !== undefined) {
+          updateData.title = fields.title
+        }
+        if (fields.description !== undefined) {
+          updateData.description = fields.description ?? null
+        }
+        if (fields.completed !== undefined) {
+          updateData.completed = fields.completed
+        }
+        batch.update(ref, updateData)
+      }
+      await batch.commit()
+    }
   }
 
   async delete(uuid: string): Promise<void> {

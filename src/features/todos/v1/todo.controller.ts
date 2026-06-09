@@ -1,8 +1,6 @@
-import { z } from 'zod'
-
 import { successResponseSchema } from '#/common/schemas/response.schema'
 import { pushBotTodoSavedMessage } from '#/features/chats/v1/todo-notify.helper'
-import { todoResponseSchema, todoItemResponseSchema } from '#/features/todos/v1/todo.schema'
+import { todoResponseSchema, todoItemResponseSchema, todoBatchResponseSchema } from '#/features/todos/v1/todo.schema'
 
 import type { Bindings, JsonInputSchema, ParamInputSchema, QueryInputSchema, Variables } from '#/common/types/app.type'
 import type { TSuccessResponse } from '#/common/types/response.type'
@@ -13,6 +11,7 @@ import type {
   TTodoUpdatePayload,
   TTodoFilterPayload,
   TTodoItemResponse,
+  TTodoBatchResponse,
   TTodoParamPayload,
 } from '#/features/todos/v1/todo.type'
 import type { Context } from 'hono'
@@ -33,11 +32,12 @@ export class TodoController {
   ): Promise<Response> => {
     const userId = c.get('user_id')
     const body = c.req.valid('json')
-    const result = await this.service.create(userId, body)
 
-    void pushBotTodoSavedMessage(userId, [result])
+    const results = await this.service.createMany(userId, body.todos)
 
-    return c.json<TTodoResponse>(todoResponseSchema.parse(result))
+    void pushBotTodoSavedMessage(userId, results)
+
+    return c.json<TTodoBatchResponse>(todoBatchResponseSchema.parse({ items: results }))
   }
 
   get = async <
@@ -69,18 +69,18 @@ export class TodoController {
   update = async <
     E extends { Bindings: Bindings; Variables: Variables },
     P extends string,
-    I extends ParamInputSchema<TTodoParamPayload> & JsonInputSchema<TTodoUpdatePayload>,
+    I extends JsonInputSchema<TTodoUpdatePayload>,
   >(
     c: Context<E, P, I>,
   ): Promise<Response> => {
     const userId = c.get('user_id')
-    const { id } = c.req.valid('param')
     const body = c.req.valid('json')
-    const updated = await this.service.update(userId, id, body)
 
-    void pushBotTodoSavedMessage(userId, [updated])
+    const results = await this.service.updateMany(userId, body.todos)
 
-    return c.json<TSuccessResponse>(successResponseSchema.parse({}))
+    void pushBotTodoSavedMessage(userId, results)
+
+    return c.json<TTodoBatchResponse>(todoBatchResponseSchema.parse({ items: results }))
   }
 
   delete = async <

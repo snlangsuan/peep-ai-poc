@@ -1,22 +1,22 @@
 import { describeRoute, resolver } from 'hono-openapi'
-import { z } from 'zod'
 
 import { DEFAULT_RESPONSE } from '#/common/constants/openapi.contant'
 import { successResponseSchema } from '#/common/schemas/response.schema'
 import { ERouteTag } from '#/common/types/openapi.type'
-import { todoResponseSchema, todoItemResponseSchema } from '#/features/todos/v1/todo.schema'
+import { todoResponseSchema, todoItemResponseSchema, todoBatchResponseSchema } from '#/features/todos/v1/todo.schema'
 
 export const createDoc: ReturnType<typeof describeRoute> = describeRoute({
   tags: [ERouteTag.TODO],
-  summary: 'Create a todo',
-  description: 'Creates a new todo for the authenticated user.',
+  summary: 'Create todos',
+  description:
+    'Creates one or more todos for the authenticated user. The body takes a `todos` array (1–50 items); a single todo is just an array of length 1. Returns the created todos as `{ items: [...] }`.',
   security: [{ ApiKeyAuth: [] }],
   responses: {
     200: {
-      description: 'Successfully created todo',
+      description: 'Successfully created todos',
       content: {
         'application/json': {
-          schema: resolver(todoResponseSchema),
+          schema: resolver(todoBatchResponseSchema),
         },
       },
     },
@@ -62,15 +62,16 @@ export const listDoc: ReturnType<typeof describeRoute> = describeRoute({
 
 export const updateDoc: ReturnType<typeof describeRoute> = describeRoute({
   tags: [ERouteTag.TODO],
-  summary: 'Update a todo',
-  description: 'Updates an existing todo. Requires x-api-key.',
+  summary: 'Update todos',
+  description:
+    'Updates one or more existing todos for the authenticated user. The body takes a `todos` array (1–50 items); each item carries its own `uuid` plus the fields to change (`title`/`description`/`completed`). The update is all-or-nothing: if any uuid is missing or not owned by the user, nothing is changed. Returns the updated todos as `{ items: [...] }`. Requires x-api-key.',
   security: [{ ApiKeyAuth: [] }],
   responses: {
     200: {
-      description: 'Successfully updated todo',
+      description: 'Successfully updated todos',
       content: {
         'application/json': {
-          schema: resolver(successResponseSchema),
+          schema: resolver(todoBatchResponseSchema),
         },
       },
     },
