@@ -65,6 +65,7 @@ const baseChatMessageScheduleContentSchema = z.object({
       uuid: z.string(),
       title: z.string(),
       scheduled_at: z.string(),
+      end_at: z.string().nullable().optional(),
       created_at: z.string(),
     }),
   ),

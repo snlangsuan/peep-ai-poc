@@ -1,4 +1,4 @@
-import { convertToLocalTime } from '#/common/utils/datetime.util'
+import { convertToLocalTime, getLocalTime } from '#/common/utils/datetime.util'
 import { pushBotScheduleCreatedMessage, pushBotScheduleListMessage } from '#/features/chats/v1/schedule-notify.helper'
 import { ScheduleRepository } from '#/features/schedules/v1/schedule.repository'
 import { ScheduleService } from '#/features/schedules/v1/schedule.service'
@@ -177,8 +177,15 @@ export class ScheduleManagementTool implements IChatTool {
           if (!uuid) {
             return JSON.stringify({ error: 'Missing required field: "uuid" is required for delete action.' })
           }
+          // Fetch the schedule first so we can report exactly what was removed.
+          // getSchedule throws if it doesn't exist / isn't the user's (handled below).
+          const target = await this.service.getSchedule(userId, uuid)
           await this.service.delete(userId, uuid)
-          return JSON.stringify({ message: `ลบกำหนดการไอดี ${uuid} สำเร็จแล้วจ้า!` })
+          return JSON.stringify({
+            status: 'success',
+            message: `ลบกำหนดการ "${target.payload.title}" เรียบร้อยแล้ว แจ้งผู้ใช้ว่าลบรายการนี้สำเร็จ พร้อมระบุชื่อและวันเวลาของกำหนดการที่ลบไป`,
+            deleted: this.formatScheduleForLLM(target),
+          })
         }
 
         default:
@@ -340,18 +347,25 @@ export class ScheduleManagementTool implements IChatTool {
     userId: string,
     filter?: { startDate?: string; endDate?: string; page?: number; limit?: number },
   ): Promise<string> {
+    // No date specified at all → default to today only.
+    let startDate = filter?.startDate
+    let endDate = filter?.endDate
+    if (!startDate && !endDate) {
+      startDate = endDate = getLocalTime().format('YYYY-MM-DD')
+    }
+
     const result = await this.service.getSchedules(userId, {
-      start_date: filter?.startDate,
-      end_date: filter?.endDate,
+      start_date: startDate,
+      end_date: endDate,
       page: filter?.page,
       limit: filter?.limit,
     })
 
     const shouldPushCard =
       result.items.length > 0 &&
-      !!filter?.startDate &&
-      !!filter?.endDate &&
-      this.daysBetweenInclusive(filter.startDate, filter.endDate) <= 31
+      !!startDate &&
+      !!endDate &&
+      this.daysBetweenInclusive(startDate, endDate) <= 31
 
     let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
     if (shouldPushCard) {

@@ -1,13 +1,21 @@
 import OpenAI from 'openai'
 
+import {
+  AGENT_SYSTEM_INSTRUCTION,
+  DEFAULT_PERSONA,
+  CLASSIFIER_SYSTEM_INSTRUCTION_TEMPLATE,
+} from '#/common/constants/chat.constant'
 import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
 import { AIService } from '#/common/services/ai.service'
+import { sseBroker } from '#/common/services/sse-broker.service'
 import { getLocalTime, getUtcTime } from '#/common/utils/datetime.util'
-import { parseQueryInput, mapInputToOpenAIContent, mapParametersToOpenAI } from '~/src/core/chat/chat-mapper'
 import { envVariables } from '#/factory'
-import { AGENT_SYSTEM_INSTRUCTION, DEFAULT_PERSONA, CLASSIFIER_SYSTEM_INSTRUCTION_TEMPLATE } from '#/common/constants/chat.constant'
+import { mapRawChatToResponse } from '#/features/chats/v1/chat.mapper'
+import { parseQueryInput, mapInputToOpenAIContent, mapParametersToOpenAI } from '~/src/core/chat/chat-mapper'
 
+import type { TChatResponse } from '#/features/chats/v1/chat.type'
+import type { Content, Tool, GenerateContentResponse, Part } from '@google/genai'
 import type {
   IChatContext,
   IChatTask,
@@ -22,8 +30,6 @@ import type {
   TChatMessageItem,
   TThinkCallback,
 } from '~/src/core/chat/chat.type'
-import type { TChatResponse } from '#/features/chats/v1/chat.type'
-import type { Content, Tool, GenerateContentResponse, Part } from '@google/genai'
 
 // ==========================================
 // Error types
@@ -88,10 +94,11 @@ export class ChatAgent {
   // that the tool already pushed a user-facing bot_message via SSE+Firestore,
   // so the agent should skip its own saveBotMessage + done-event emission to avoid duplication.
   private suppressFinalAgentMessage = false
-  // Captured from a tool's response via `__agent_saved_message` — the chat record the tool
-  // pre-saved to Firestore. The agent uses this in its `done` SSE event (with real metadata)
-  // instead of generating + saving its own LLM text response.
-  private pendingAgentSavedMessage: ISavedBotMessage | undefined
+  // Captured from tools' responses via `__agent_saved_message` — the chat records that tools
+  // pre-saved to Firestore. The agent surfaces these instead of its own LLM text response.
+  // Multiple entries occur when one user message triggers several actions (e.g. schedule +
+  // expense): each tool pre-saves its own card and all of them must be emitted.
+  private pendingAgentSavedMessages: ISavedBotMessage[] = []
 
   private static readonly HISTORY_WINDOW = 20
   private static readonly SUMMARIZE_THRESHOLD = 40
@@ -370,8 +377,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         skills: skillUsage.breakdown,
       }
 
-      if (this.suppressFinalAgentMessage && this.pendingAgentSavedMessage) {
-        await this.emitDoneFromPresavedMessage(this.pendingAgentSavedMessage, metadata, usage, thinkCallback)
+      if (this.suppressFinalAgentMessage && this.pendingAgentSavedMessages.length > 0) {
+        await this.emitPresavedMessages(this.pendingAgentSavedMessages, metadata, usage, thinkCallback)
         return { response: '', metadata }
       }
 
@@ -397,18 +404,17 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     } catch (error) {
       logger.error(error, 'ChatAgent.queryOpenAI execution failed')
       if (error instanceof ChatAgentError) throw error
-      throw new ChatAgentError(
-        'llm_call',
-        error instanceof Error ? error.message : String(error),
-        { cause: error },
-      )
+      throw new ChatAgentError('llm_call', error instanceof Error ? error.message : String(error), { cause: error })
     }
   }
 
   private extractOpenAIDirectToolResponse(
     openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
   ): string {
-    const toolMsg = openaiMessages.slice().reverse().find((msg) => msg.role === 'tool')
+    const toolMsg = openaiMessages
+      .slice()
+      .reverse()
+      .find((msg) => msg.role === 'tool')
     let payloadText = ''
     if (toolMsg && toolMsg.content) {
       if (typeof toolMsg.content === 'string') {
@@ -439,15 +445,17 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       object: 'chat.completion',
       created,
       model,
-      choices: [{
-        index: 0,
-        message: {
-          role: 'assistant',
-          content: responseText
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: responseText,
+          },
+          finish_reason: 'stop',
         },
-        finish_reason: 'stop'
-      }],
-      usage
+      ],
+      usage,
     } as unknown as OpenAI.Chat.Completions.ChatCompletion
   }
 
@@ -516,8 +524,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       })
 
       const hasDirectTool = toolCalls.some(
-        (call) =>
-          call.type === 'function' && call.function?.name && directReturnTools.includes(call.function.name),
+        (call) => call.type === 'function' && call.function?.name && directReturnTools.includes(call.function.name),
       )
 
       const stepResult = await this.executeOpenAIToolStep(toolCalls, openaiMessages, context, thinkCallback)
@@ -590,14 +597,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       })
 
       let { finalResponse, toolUsageCount, toolCredits, totalInputTokens, totalOutputTokens } =
-        await this.runGeminiToolReasoningLoop(
-          response,
-          contents,
-          toolsConfig,
-          context,
-          baseInstruction,
-          thinkCallback,
-        )
+        await this.runGeminiToolReasoningLoop(response, contents, toolsConfig, context, baseInstruction, thinkCallback)
 
       let finalResponseText = finalResponse.candidates?.[0]?.content?.parts?.find((p: Part) => p.text)?.text || ''
 
@@ -642,8 +642,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
         skills: skillUsage.breakdown,
       }
 
-      if (this.suppressFinalAgentMessage && this.pendingAgentSavedMessage) {
-        await this.emitDoneFromPresavedMessage(this.pendingAgentSavedMessage, metadata, usage, thinkCallback)
+      if (this.suppressFinalAgentMessage && this.pendingAgentSavedMessages.length > 0) {
+        await this.emitPresavedMessages(this.pendingAgentSavedMessages, metadata, usage, thinkCallback)
         return { response: '', metadata }
       }
 
@@ -669,11 +669,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     } catch (error) {
       logger.error(error, 'ChatAgent.queryGemini execution failed')
       if (error instanceof ChatAgentError) throw error
-      throw new ChatAgentError(
-        'llm_call',
-        error instanceof Error ? error.message : String(error),
-        { cause: error },
-      )
+      throw new ChatAgentError('llm_call', error instanceof Error ? error.message : String(error), { cause: error })
     }
   }
 
@@ -708,12 +704,14 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
 
   private mockGeminiResponse(responseText: string): GenerateContentResponse {
     return {
-      candidates: [{
-        content: {
-          role: 'model',
-          parts: [{ text: responseText }]
-        }
-      }]
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [{ text: responseText }],
+          },
+        },
+      ],
     } as unknown as GenerateContentResponse
   }
 
@@ -895,7 +893,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     this.executedTools = []
     this.usedSkills.clear()
     this.suppressFinalAgentMessage = false
-    this.pendingAgentSavedMessage = undefined
+    this.pendingAgentSavedMessages = []
   }
 
   private parseToolPayloadObject(payload: unknown): Record<string, unknown> | null {
@@ -939,15 +937,15 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       )
     }
 
-    if (this.pendingAgentSavedMessage === undefined) {
-      const saved = this.extractSavedBotMessage(rec.__agent_saved_message)
-      if (saved) {
-        this.pendingAgentSavedMessage = saved
-        logger.info(
-          { userId: this.userId, chatId: saved.id },
-          '[chat-agent] captured tool-pre-saved bot message for use in done event',
-        )
-      }
+    const saved = this.extractSavedBotMessage(rec.__agent_saved_message)
+    // Capture every pre-saved card (one per action), skipping duplicates by id,
+    // so multi-action turns (e.g. schedule + expense) surface all of them.
+    if (saved && !this.pendingAgentSavedMessages.some((m) => m.id === saved.id)) {
+      this.pendingAgentSavedMessages.push(saved)
+      logger.info(
+        { userId: this.userId, chatId: saved.id },
+        '[chat-agent] captured tool-pre-saved bot message for use in done event',
+      )
     }
   }
 
@@ -1058,24 +1056,36 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     context: IChatContext,
     thinkCallback?: TThinkCallback,
   ): Promise<{ toolResponseParts: Part[]; usageCount: number; credits: number }> {
+    // Run all tool calls in a step concurrently (multi-action like schedule +
+    // expense fires together). runToolCall registers its dedup signature before
+    // its first await, so parallel execution stays race-safe; results are
+    // collected back in the original call order.
+    const validCalls = functionCallParts
+      .map((part) => part.functionCall)
+      .filter((call): call is NonNullable<typeof call> & { name: string } => !!call?.name)
+
+    const results = await Promise.all(
+      validCalls.map((call) =>
+        this.runToolCall(
+          { name: call.name, args: (call.args || {}) as Record<string, unknown> },
+          context,
+          thinkCallback,
+        ).then((r) => ({ name: call.name, ...r })),
+      ),
+    )
+
     const toolResponseParts: Part[] = []
     let usageCount = 0
     let credits = 0
-    for (const part of functionCallParts) {
-      const call = part.functionCall
-      if (!call || !call.name) {
-        continue
-      }
-      const args = (call.args || {}) as Record<string, unknown>
-      const { responsePayload, cost } = await this.runToolCall({ name: call.name, args }, context, thinkCallback)
+    for (const r of results) {
       toolResponseParts.push({
         functionResponse: {
-          name: call.name,
-          response: this.toFunctionResponseStruct(responsePayload),
+          name: r.name,
+          response: this.toFunctionResponseStruct(r.responsePayload),
         },
       })
       usageCount += 1
-      credits += cost
+      credits += r.cost
     }
     return { toolResponseParts, usageCount, credits }
   }
@@ -1086,21 +1096,28 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     context: IChatContext,
     thinkCallback?: TThinkCallback,
   ): Promise<{ usageCount: number; credits: number }> {
+    // Run all tool calls in this step concurrently, preserving original order
+    // when appending the tool result messages.
+    const functionCalls = toolCalls.filter(
+      (call): call is OpenAI.Chat.Completions.ChatCompletionMessageToolCall & { type: 'function' } =>
+        call.type === 'function',
+    )
+
+    const results = await Promise.all(
+      functionCalls.map((call) => {
+        const args = JSON.parse(call.function.arguments) as Record<string, unknown>
+        return this.runToolCall({ name: call.function.name, args }, context, thinkCallback).then((r) => ({
+          call,
+          ...r,
+        }))
+      }),
+    )
+
     let usageCount = 0
     let credits = 0
-    for (const call of toolCalls) {
-      if (call.type !== 'function') {
-        continue
-      }
-      const args = JSON.parse(call.function.arguments) as Record<string, unknown>
-      const { responsePayload, cost } = await this.runToolCall(
-        { name: call.function.name, args },
-        context,
-        thinkCallback,
-      )
+    for (const { call, responsePayload, cost } of results) {
       usageCount += 1
       credits += cost
-
       openaiMessages.push({
         role: 'tool',
         tool_call_id: call.id,
@@ -1159,7 +1176,9 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       const recentDocs = docs.slice(-ChatAgent.HISTORY_WINDOW)
 
       const memoriesDoc = await db.collection('user_memories').doc(this.userId).get()
-      const memoriesData = memoriesDoc.exists ? (memoriesDoc.data()?.memories as Record<string, string> | undefined) : undefined
+      const memoriesData = memoriesDoc.exists
+        ? (memoriesDoc.data()?.memories as Record<string, string> | undefined)
+        : undefined
       const existingSummary = memoriesData?._chat_summary || ''
       const summarizedCount = parseInt(memoriesData?._chat_summary_count || '0', 10)
 
@@ -1346,22 +1365,25 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     },
   ): Promise<void> {
     try {
-      await db.collection('chats').doc(chatId).update({
-        input_tokens: usage.inputTokens,
-        output_tokens: usage.outputTokens,
-        total_tokens: usage.totalTokens,
-        llm_credits: Math.ceil(usage.llmCredits),
-        tool_credits: Math.ceil(usage.toolCredits),
-        skill_credits: Math.ceil(usage.skillCredits),
-        credits_used: Math.ceil(usage.creditsUsed),
-        tools: usage.tools,
-        skills_used: usage.skills.map((s) => ({
-          name: s.name,
-          overhead_credits: s.overheadCredits,
-          tool_count: s.toolCount,
-        })),
-        error: null,
-      })
+      await db
+        .collection('chats')
+        .doc(chatId)
+        .update({
+          input_tokens: usage.inputTokens,
+          output_tokens: usage.outputTokens,
+          total_tokens: usage.totalTokens,
+          llm_credits: Math.ceil(usage.llmCredits),
+          tool_credits: Math.ceil(usage.toolCredits),
+          skill_credits: Math.ceil(usage.skillCredits),
+          credits_used: Math.ceil(usage.creditsUsed),
+          tools: usage.tools,
+          skills_used: usage.skills.map((s) => ({
+            name: s.name,
+            overhead_credits: s.overheadCredits,
+            tool_count: s.toolCount,
+          })),
+          error: null,
+        })
     } catch (error) {
       logger.warn({ error, chatId }, '[chat-agent] failed to attach usage to pre-saved chat doc')
     }
@@ -1401,8 +1423,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     const synthesisResponse = await this.aiService.generate(contents, {
       systemInstruction: synthesisInstruction,
     })
-    const synthText =
-      synthesisResponse.candidates?.[0]?.content?.parts?.find((p: Part) => p.text)?.text || ''
+    const synthText = synthesisResponse.candidates?.[0]?.content?.parts?.find((p: Part) => p.text)?.text || ''
     const usable = synthText && !this.looksLikeRawToolDump(synthText)
     return {
       text: usable ? synthText : '',
@@ -1412,8 +1433,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     }
   }
 
-  private async emitDoneFromPresavedMessage(
-    presaved: ISavedBotMessage,
+  private async emitPresavedMessages(
+    presaved: ISavedBotMessage[],
     metadata: IChatAgentMetadata,
     usage: {
       inputTokens: number
@@ -1428,20 +1449,33 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     },
     thinkCallback?: TThinkCallback,
   ): Promise<void> {
+    const last = presaved[presaved.length - 1]!
+
+    // Aggregate usage + credit deduction is attached to the final card only.
     if (this.persistHistory && usage.creditsUsed > 0) {
-      await this.attachUsageToPresavedAndDeductCredits(presaved.id, usage)
+      await this.attachUsageToPresavedAndDeductCredits(last.id, usage)
     }
     metadata.remainingCredits = this.remainingCredits ?? metadata.remainingCredits
     logger.info(
-      { userId: this.userId, presavedId: presaved.id },
-      '[chat-agent] using tool-pre-saved message in done event (suppressed agent text)',
+      { userId: this.userId, presavedIds: presaved.map((m) => m.id) },
+      '[chat-agent] surfacing tool-pre-saved message(s) (suppressed agent text)',
     )
+
+    // Every action's card must reach the user: earlier cards go out as live
+    // bot_message events, and the last one is the turn's `done` event.
+    for (const m of presaved.slice(0, -1)) {
+      sseBroker.emit(this.userId, {
+        type: 'bot_message',
+        message: mapRawChatToResponse(m),
+      })
+    }
+
     if (thinkCallback) {
       await thinkCallback({
         status: 'done',
         response: '',
-        messageId: presaved.id,
-        savedMessage: presaved,
+        messageId: last.id,
+        savedMessage: last,
         metadata,
       })
     }
@@ -1491,7 +1525,11 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
           : {}),
       }
       savedBotMessage = { id: botDocRef.id, ...botData }
-      await botDocRef.set({ user_id: this.userId, ...(this.sessionId ? { session_id: this.sessionId } : {}), ...botData })
+      await botDocRef.set({
+        user_id: this.userId,
+        ...(this.sessionId ? { session_id: this.sessionId } : {}),
+        ...botData,
+      })
 
       let remaining = 0
       if (usage && usage.creditsUsed > 0) {
@@ -1569,7 +1607,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     return {
       name: 'task_complete',
       description:
-        'Call this tool ONLY when you have fully completed the user\'s request and want to deliver the final answer. The `message` parameter is the natural-language reply that will be shown to the user verbatim. Do NOT call this tool if more tool calls are still needed.',
+        "Call this tool ONLY when you have fully completed the user's request and want to deliver the final answer. The `message` parameter is the natural-language reply that will be shown to the user verbatim. Do NOT call this tool if more tool calls are still needed.",
       parameters: {
         type: 'OBJECT',
         properties: {
@@ -1664,7 +1702,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       if (userDoc.exists) {
         const userData = userDoc.data()
         const username = userData?.username || 'คุณปี๊บ'
-        userProfileText = `\n\nUser Profile Information:\n- User ID: ${this.userId}\n- Username: ${username}\n- Always address the user as "คุณ ${username}" in Thai responses.`
+        userProfileText = `\n\nUser Profile Information:\n- User ID: ${this.userId}\n- Username: ${username}\n- When you do address the user by name, use "คุณ ${username}" (never bare "คุณ" or a placeholder). But address by name NATURALLY and sparingly — mainly in greetings; do NOT append "คุณ ${username}" to every sentence, and especially never tack it onto the end of a question (e.g. "...ใช่ไหม คุณ ${username}." sounds stiff and robotic). If adding the name doesn't read smoothly, leave it out.`
       }
     } catch (e) {
       logger.warn(e, 'Failed to fetch user profile for dynamic instruction injection')
@@ -1674,7 +1712,10 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     if (this.tasks && this.tasks.length > 0) {
       const activeSkills = this.tasks
         .filter((t) => t.skill && t.skillInstruction)
-        .map((t) => `[Skill: ${t.skill}] - Instruction Rule: ${t.skillInstruction}${context?.metadata?.[t.skill!] ? ` (Detected ${t.skill} context value: "${context.metadata[t.skill!]}")` : ''}`)
+        .map(
+          (t) =>
+            `[Skill: ${t.skill}] - Instruction Rule: ${t.skillInstruction}${context?.metadata?.[t.skill!] ? ` (Detected ${t.skill} context value: "${context.metadata[t.skill!]}")` : ''}`,
+        )
         .join('\n')
       if (activeSkills) {
         taskSkillsText = `\n\nActive Task Skills Guidelines:\n${activeSkills}`
@@ -1746,7 +1787,10 @@ CRITICAL: When the user says "วันนี้" / "today", use ${today}. When 
 
   private looksLikeRawToolDump(text: string): boolean {
     if (!text) return false
-    const trimmed = text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '').trim()
+    const trimmed = text
+      .trim()
+      .replace(/^```(?:json)?\s*|\s*```$/g, '')
+      .trim()
     if (trimmed.length < 2) return false
     if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false
     if (this.hasKnownDumpKeywords(trimmed)) return true
@@ -1763,9 +1807,18 @@ CRITICAL: When the user says "วันนี้" / "today", use ${today}. When 
     let escape = false
     for (let i = 0; i < text.length; i++) {
       const c = text[i]
-      if (escape) { escape = false; continue }
-      if (c === '\\') { escape = true; continue }
-      if (c === '"') { inString = !inString; continue }
+      if (escape) {
+        escape = false
+        continue
+      }
+      if (c === '\\') {
+        escape = true
+        continue
+      }
+      if (c === '"') {
+        inString = !inString
+        continue
+      }
       if (inString) continue
       if (c === '{' || c === '[') depth++
       else if (c === '}' || c === ']') {

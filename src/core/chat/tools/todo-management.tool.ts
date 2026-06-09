@@ -20,11 +20,24 @@ export class TodoManagementTool implements IChatTool {
       },
       title: {
         type: 'STRING',
-        description: 'หัวข้อของ Todo (จำเป็นสำหรับ action "create" หรือใช้แก้ไขใน "update")',
+        description: 'หัวข้อของ Todo (ใช้สร้างทีละรายการ หรือใช้แก้ไขใน "update")',
       },
       description: {
         type: 'STRING',
         description: 'รายละเอียดของ Todo',
+      },
+      todos: {
+        type: 'ARRAY',
+        description:
+          'รายการ Todo หลายรายการที่ต้องการสร้างพร้อมกัน (ใช้กับ action "create") ใช้เมื่อข้อความของผู้ใช้มีหลายงาน เช่น แต่ละบรรทัด (new line) เป็นคนละงาน หรือคั่นด้วยจุลภาค — แต่ละ item แยกเป็นคนละ todo ถ้ามี todos array จะถูกใช้แทน title เดี่ยว',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            title: { type: 'STRING', description: 'หัวข้อของ Todo' },
+            description: { type: 'STRING', description: 'รายละเอียด — optional' },
+          },
+          required: ['title'],
+        },
       },
       completed: {
         type: 'BOOLEAN',
@@ -55,11 +68,12 @@ export class TodoManagementTool implements IChatTool {
       title?: string
       description?: string
       completed?: boolean
+      todos?: Array<{ title: string; description?: string }>
       filter?: { page?: number; limit?: number; completed?: boolean }
     },
     context: IChatContext,
   ): Promise<string> {
-    const { action, uuid, title, description, completed, filter } = args
+    const { action, uuid, title, description, completed, todos, filter } = args
     const userId = context.userId
 
     // Force default limit to 10 if not provided, as requested for pagination of 10 items
@@ -72,7 +86,7 @@ export class TodoManagementTool implements IChatTool {
     try {
       switch (action) {
         case 'create':
-          return await this.handleCreate(userId, { title, description })
+          return await this.handleCreate(userId, { title, description, todos })
         case 'get':
           return await this.handleGet(userId, uuid)
         case 'list':
@@ -91,18 +105,24 @@ export class TodoManagementTool implements IChatTool {
 
   private async handleCreate(
     userId: string,
-    args: { title?: string; description?: string },
+    args: { title?: string; description?: string; todos?: Array<{ title: string; description?: string }> },
   ): Promise<string> {
-    if (!args.title) {
-      return JSON.stringify({ error: 'Missing required field: "title" is required for create action.' })
+    // Accept either a single title or a batch `todos` array (e.g. one item per line).
+    const rawItems =
+      args.todos && args.todos.length > 0 ? args.todos : args.title ? [{ title: args.title, description: args.description }] : []
+
+    const items = rawItems
+      .filter((it) => typeof it.title === 'string' && it.title.trim().length > 0)
+      .map((it) => ({ title: it.title.trim(), description: it.description }))
+
+    if (items.length === 0) {
+      return JSON.stringify({ error: 'Missing required field: "title" (or a non-empty "todos" array) is required for create action.' })
     }
-    const result = await this.service.create(userId, {
-      title: args.title,
-      description: args.description,
-    })
+
+    const created = await this.service.createMany(userId, items)
 
     let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
-    const saved = await pushBotTodoSavedMessage(userId, [result], { emitSSE: false })
+    const saved = await pushBotTodoSavedMessage(userId, created, { emitSSE: false })
     if (saved) {
       savedForAgentDone = {
         id: saved.id,
@@ -112,8 +132,11 @@ export class TodoManagementTool implements IChatTool {
     }
 
     return JSON.stringify({
-      message: 'สร้างรายการใหม่สำเร็จแล้วจ้า!',
-      todo: result,
+      message:
+        created.length === 1
+          ? 'สร้างรายการใหม่สำเร็จแล้วจ้า!'
+          : `สร้างรายการสิ่งที่ต้องทำสำเร็จ ${created.length} รายการแล้วจ้า!`,
+      todos: created,
       ...(savedForAgentDone
         ? {
             __suppress_agent_response: true,

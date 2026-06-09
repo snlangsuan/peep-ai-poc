@@ -59,6 +59,7 @@ export async function pushBotScheduleCreatedMessage(
       uuid: s.uuid,
       title: s.payload.title,
       scheduled_at: s.scheduled_at,
+      end_at: s.end_at ?? null,
       created_at: s.createdAt || createdAtIso,
     }))
     const content: TChatResponse['content'] = [
@@ -110,6 +111,7 @@ export async function pushBotScheduleListMessage(
       uuid: s.uuid,
       title: s.payload.title,
       scheduled_at: s.scheduled_at,
+      end_at: s.end_at ?? null,
       created_at: s.createdAt || createdAtIso,
     }))
     const content: TChatResponse['content'] = [

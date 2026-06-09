@@ -1,3 +1,4 @@
+import { getLocalTime } from '#/common/utils/datetime.util'
 import { ExpenseService } from '#/features/expenses/v1/expense.service'
 import { ExpenseRepository } from '#/features/expenses/v1/expense.repository'
 import { pushBotExpenseCreatedMessage, pushBotExpenseListMessage } from '#/features/chats/v1/expense-notify.helper'
@@ -202,9 +203,16 @@ export class ExpenseManagementTool implements IChatTool {
     userId: string,
     filter?: { startDate?: string; endDate?: string; page?: number; limit?: number },
   ): Promise<string> {
+    // No date specified at all → default to today only.
+    let startDate = filter?.startDate
+    let endDate = filter?.endDate
+    if (!startDate && !endDate) {
+      startDate = endDate = getLocalTime().format('YYYY-MM-DD')
+    }
+
     const apiFilter = {
-      start_date: filter?.startDate,
-      end_date: filter?.endDate,
+      start_date: startDate,
+      end_date: endDate,
       page: filter?.page,
       limit: filter?.limit,
     }
@@ -218,9 +226,9 @@ export class ExpenseManagementTool implements IChatTool {
     // to skip its own done event so the user sees one cohesive message.
     const shouldPushCard =
       result.items.length > 0 &&
-      !!filter?.startDate &&
-      !!filter?.endDate &&
-      this.daysBetweenInclusive(filter.startDate, filter.endDate) <= 31
+      !!startDate &&
+      !!endDate &&
+      this.daysBetweenInclusive(startDate, endDate) <= 31
 
     let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
     if (shouldPushCard) {
@@ -228,8 +236,8 @@ export class ExpenseManagementTool implements IChatTool {
         userId,
         {
           expenses: result.items,
-          startDate: filter!.startDate!,
-          endDate: filter!.endDate!,
+          startDate: startDate!,
+          endDate: endDate!,
         },
         { emitSSE: false },
       )
@@ -250,8 +258,8 @@ export class ExpenseManagementTool implements IChatTool {
       items: result.items,
       total_amount: sumAmount,
       period: {
-        start: filter?.startDate || 'all',
-        end: filter?.endDate || 'all',
+        start: startDate || 'all',
+        end: endDate || 'all',
       },
       ...(savedForAgentDone
         ? {
