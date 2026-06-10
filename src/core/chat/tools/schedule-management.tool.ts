@@ -40,7 +40,7 @@ export class ScheduleManagementTool implements IChatTool {
       invitees: {
         type: 'STRING',
         description:
-          'รายชื่อผู้ที่จะเชิญ รับเป็น text (เช่น "คุณเอ คุณบี" หรือ "alice@example.com, bob@example.com") — optional',
+          'รายชื่อผู้ที่จะเชิญ รับเป็น text (เช่น "คุณเอ คุณบี" หรือ "alice@example.com, bob@example.com"). เมื่อข้อความสื่อว่านัดกับใคร (เช่น "นัดประชุมกับทีม ui", "นัดคุยงานกับพี่ตอง", "นัดกับคุณเอ") ให้ดึงชื่อบุคคล/กลุ่มนั้นมาใส่ที่นี่เสมอ — optional',
       },
       repeat: {
         type: 'STRING',
@@ -66,7 +66,11 @@ export class ScheduleManagementTool implements IChatTool {
             scheduledAt: { type: 'STRING', description: 'วันและเวลาเริ่มต้น รูปแบบ ISO 8601' },
             endAt: { type: 'STRING', description: 'วันและเวลาสิ้นสุด รูปแบบ ISO 8601 — optional' },
             title: { type: 'STRING', description: 'หัวข้อ/กิจกรรม' },
-            invitees: { type: 'STRING', description: 'รายชื่อผู้ที่จะเชิญ (text) — optional' },
+            invitees: {
+              type: 'STRING',
+              description:
+                'รายชื่อผู้ที่จะเชิญ (text). ถ้าข้อความสื่อว่านัดกับใคร (เช่น "นัดกับพี่ตอง") ให้ดึงชื่อนั้นมาใส่เสมอ — optional',
+            },
             repeat: { type: 'STRING', description: 'none / daily / weekly / monthly / yearly — optional' },
             note: { type: 'STRING', description: 'หมายเหตุ — optional' },
           },

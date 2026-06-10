@@ -8,11 +8,21 @@ import type { TScheduleResponse } from '#/features/schedules/v1/schedule.type'
 import type { TChatResponse } from '#/features/chats/v1/chat.type'
 
 const SCHEDULE_SAVED_TEXT = 'บันทึกนัดหมายเรียบร้อยแล้ว'
+const SCHEDULE_SAVED_INVITE_TEXT = 'บันทึกนัดหมายเรียบร้อยแล้ว\nต้องการให้เชิญผู้เข้าร่วมไหม'
 const SCHEDULE_CARD_TITLE = 'ตารางนัดหมาย'
 const SCHEDULE_LIST_CARD_TITLE = 'ตารางนัดหมาย'
 
 /** Max items shown in a list card; the card also carries the real item_count. */
 export const LIST_CARD_MAX_ITEMS = 5
+
+/**
+ * True when a schedule represents an appointment "with someone" (e.g. "นัดประชุมกับทีม ui").
+ * We use the LLM-extracted invitees as the signal — it's only populated when the user's
+ * message implies meeting people, which is exactly when an invite card makes sense.
+ */
+function isAppointmentWithSomeone(schedule: TScheduleResponse): boolean {
+  return !!schedule.payload.invitees && schedule.payload.invitees.trim().length > 0
+}
 
 export interface IPushBotChatResult {
   id: string
@@ -55,15 +65,19 @@ export async function pushBotScheduleCreatedMessage(
 
   try {
     const createdAtIso = new Date().toISOString()
+    // Only a single appointment "with someone" gets an invite card.
+    const isSingle = schedules.length === 1
     const items = schedules.map((s) => ({
       uuid: s.uuid,
       title: s.payload.title,
       scheduled_at: s.scheduled_at,
       end_at: s.end_at ?? null,
       created_at: s.createdAt || createdAtIso,
+      invite: isSingle && isAppointmentWithSomeone(s),
     }))
+    const savedText = items.some((it) => it.invite) ? SCHEDULE_SAVED_INVITE_TEXT : SCHEDULE_SAVED_TEXT
     const content: TChatResponse['content'] = [
-      { type: 'text', text: SCHEDULE_SAVED_TEXT },
+      { type: 'text', text: savedText },
       {
         type: 'schedule',
         title: SCHEDULE_CARD_TITLE,
@@ -113,6 +127,8 @@ export async function pushBotScheduleListMessage(
       scheduled_at: s.scheduled_at,
       end_at: s.end_at ?? null,
       created_at: s.createdAt || createdAtIso,
+      // Listing schedules never shows an invite — that's only for a fresh single appointment.
+      invite: false,
     }))
     const content: TChatResponse['content'] = [
       {

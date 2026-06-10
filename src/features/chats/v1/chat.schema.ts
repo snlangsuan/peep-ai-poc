@@ -67,10 +67,36 @@ const baseChatMessageScheduleContentSchema = z.object({
       scheduled_at: z.string(),
       end_at: z.string().nullable().optional(),
       created_at: z.string(),
+      // True when the card should also render an invite (single appointment with someone).
+      // Optional + default keeps older stored cards (without this field) parseable.
+      invite: z.boolean().optional().default(false),
     }),
   ),
   // Actual total number of items (items[] may be truncated for display).
   item_count: z.number().optional(),
+})
+
+const baseChatMessageScheduleNotifyContentSchema = z.object({
+  type: z.literal('schedule_notify'),
+  title: z.string(),
+  subtitle: z.string(),
+  created_at: z.string(),
+  items: z.array(
+    z.object({
+      uuid: z.string(),
+      title: z.string(),
+      schedule_at: z.string(),
+      end_at: z.string().nullable().optional(),
+      created_at: z.string(),
+      // Present only when the schedule carries a note.
+      note: z.string().nullable().optional(),
+    }),
+  ),
+  // Actual total number of items (items[] may be truncated for display).
+  item_count: z.number().optional(),
+  // Minutes ahead of the schedule when this is an advance reminder.
+  // Present only for pre-notifications; absent when the appointment is due now.
+  notify_before_minutes: z.number().optional(),
 })
 
 const baseChatMessageExpenseContentSchema = z.object({
@@ -165,6 +191,7 @@ export const chatMessageResponseContentSchema = z.discriminatedUnion('type', [
   baseChatMessageMoodCardContentSchema,
   baseChatMessageMoodResultContentSchema,
   baseChatMessageScheduleContentSchema,
+  baseChatMessageScheduleNotifyContentSchema,
   baseChatMessageExpenseContentSchema,
   baseChatMessageTodoContentSchema,
   baseChatMessageFortuneContentSchema,

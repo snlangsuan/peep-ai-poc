@@ -6,8 +6,12 @@ import { sseBroker } from '#/common/services/sse-broker.service'
 import { getLocalTime } from '#/common/utils/datetime.util'
 import { getCurrentSessionId } from '#/features/chats/v1/chat-session.helper'
 
+import type { TChatResponse } from '#/features/chats/v1/chat.type'
 import type { IScheduleModule } from '#/worker/schedule/schedule.type'
 import type { Dayjs } from 'dayjs'
+
+/** How many minutes before the schedule the advance reminder fires. */
+const PRE_NOTIFY_MINUTES = 15
 
 export class CheckSchedulesModule implements IScheduleModule {
   readonly name = 'check-schedules'
@@ -115,7 +119,7 @@ export class CheckSchedulesModule implements IScheduleModule {
       'Checking schedule timing conditions',
     )
 
-    if (diffMinutes > 0 && diffMinutes <= 15 && !beforeSentAt) {
+    if (diffMinutes > 0 && diffMinutes <= PRE_NOTIFY_MINUTES && !beforeSentAt) {
       await this.handlePreNotification(doc, scheduledAt, data.payload)
     }
 
@@ -144,13 +148,10 @@ export class CheckSchedulesModule implements IScheduleModule {
     // Add chatbot message to the chats collection so it appears in history
     const data = doc.data()
     const userId = data.user_id || data.userId
-    const title = payload?.title || payload?.message || 'ไม่มีหัวข้อ'
-    const desc = payload?.description ? ` (${payload.description})` : ''
-    const loc = payload?.location ? ` ที่ ${payload.location}` : ''
-    const notificationMessage = `⏰ [แจ้งเตือนล่วงหน้า 15 นาที] อีก 15 นาที มีนัดหมาย: "${title}"${loc}${desc}`
 
     if (userId) {
-      await this.saveAndEmitNotification(userId, notificationMessage)
+      const content = this.buildNotificationContent(doc.id, data, scheduledAt, payload, 'pre')
+      await this.saveAndEmitNotification(userId, content)
       logger.info({ scheduleId: doc.id, userId }, '💬 Saved pre-notification message to chats collection')
     }
   }
@@ -175,20 +176,56 @@ export class CheckSchedulesModule implements IScheduleModule {
     // Add chatbot message to the chats collection so it appears in history
     const data = doc.data()
     const userId = data.user_id || data.userId
-    const title = payload?.title || payload?.message || 'ไม่มีหัวข้อ'
-    const desc = payload?.description ? ` (${payload.description})` : ''
-    const loc = payload?.location ? ` ที่ ${payload.location}` : ''
-    const notificationMessage = `🔔 [แจ้งเตือน] ถึงเวลาแล้วจ้า: "${title}"${loc}${desc}`
 
     if (userId) {
-      await this.saveAndEmitNotification(userId, notificationMessage)
+      const content = this.buildNotificationContent(doc.id, data, scheduledAt, payload, 'due')
+      await this.saveAndEmitNotification(userId, content)
       logger.info({ scheduleId: doc.id, userId }, '💬 Saved due-notification message to chats collection')
     }
   }
 
-  /** Persist a text-only bot notification + emit SSE bot_message in the new content-array shape. */
-  private async saveAndEmitNotification(userId: string, text: string): Promise<void> {
-    const content = [{ type: 'text' as const, text }]
+  /**
+   * Builds the notification message: a text block + a `schedule_notify` card.
+   * Pre-notifications append a "ล่วงหน้า 15 นาที" hint to the text so the user knows it's early.
+   */
+  private buildNotificationContent(
+    docId: string,
+    data: any,
+    scheduledAt: Dayjs,
+    payload: any,
+    kind: 'pre' | 'due',
+  ): TChatResponse['content'] {
+    const nowIso = getLocalTime().toISOString()
+    const text =
+      kind === 'pre' ? `แจ้งเตือนการนัดหมาย (ล่วงหน้า ${PRE_NOTIFY_MINUTES} นาที)` : 'แจ้งเตือนการนัดหมาย'
+
+    const item = {
+      uuid: data.uuid || docId,
+      title: payload?.title || payload?.message || 'ไม่มีหัวข้อ',
+      schedule_at: scheduledAt.toISOString(),
+      end_at: this.parseDate(data.end_at)?.toISOString() ?? null,
+      created_at: this.parseDate(data.created_at)?.toISOString() ?? nowIso,
+      // Only include note when the schedule actually has one.
+      ...(payload?.note ? { note: payload.note as string } : {}),
+    }
+
+    return [
+      { type: 'text', text },
+      {
+        type: 'schedule_notify',
+        title: 'แจ้งเตือนการนัดหมาย',
+        subtitle: '1 รายการ',
+        created_at: nowIso,
+        items: [item],
+        item_count: 1,
+        // Advance reminders carry how many minutes early they are; due ones omit it.
+        ...(kind === 'pre' ? { notify_before_minutes: PRE_NOTIFY_MINUTES } : {}),
+      },
+    ]
+  }
+
+  /** Persist a bot notification (text + card) to Firestore + emit it over SSE. */
+  private async saveAndEmitNotification(userId: string, content: TChatResponse['content']): Promise<void> {
     const createdAt = new Date()
     const sessionId = await getCurrentSessionId(userId)
     const docRef = await db.collection('chats').add({
@@ -201,7 +238,7 @@ export class CheckSchedulesModule implements IScheduleModule {
       created_at: createdAt,
     })
     sseBroker.emit(userId, {
-      type: 'bot_message',
+      type: 'done',
       message: {
         id: docRef.id,
         sender_id: 'bot',
