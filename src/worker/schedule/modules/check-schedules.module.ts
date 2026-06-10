@@ -196,8 +196,8 @@ export class CheckSchedulesModule implements IScheduleModule {
     kind: 'pre' | 'due',
   ): TChatResponse['content'] {
     const nowIso = getLocalTime().toISOString()
-    const text =
-      kind === 'pre' ? `แจ้งเตือนการนัดหมาย (ล่วงหน้า ${PRE_NOTIFY_MINUTES} นาที)` : 'แจ้งเตือนการนัดหมาย'
+    // Pre/due share the same text; the card's notify_before_minutes carries the "advance" detail.
+    const text = 'แจ้งเตือนการนัดหมาย'
 
     const item = {
       uuid: data.uuid || docId,
