@@ -46,9 +46,12 @@ const BRIEFING_INSTRUCTION = `คุณคือผู้ช่วยส่ว�
 ข้อกำหนดเด็ดขาด:
 - ใช้ตัวเลขตามที่กำหนดให้เท่านั้น ห้ามเปลี่ยน ห้ามเพิ่ม ห้ามมั่วจำนวนหรือหมวดที่ไม่ได้ระบุ (เช่น ห้ามแต่ง "อีเมล" หรือ "เพื่อนชวน" ขึ้นมาเองถ้าไม่ได้ให้มา)
 - กระชับ ไม่เกิน ~120 ตัวอักษร ขึ้นต้นด้วยสิ่งที่มีวันนี้ได้เลย ไม่ต้องเกริ่นทักทายยาว
-- จะปิดท้ายด้วยคำชวนวางแผนสั้น ๆ (เช่น "แตะเพื่อวางแผนวันของคุณ") หรือไม่ใส่ก็ได้
+- เขียนแค่ประโยคสรุป "ห้ามใส่คำชวนกด/แตะ เช่น 'แตะเพื่อวางแผน' เอง" (ระบบจะเติมให้ทีหลัง)
 - ตอบกลับเป็น "ข้อความล้วน" บรรทัดเดียว ห้ามใส่เครื่องหมายคำพูด ห้ามขึ้นบรรทัดใหม่ ห้ามใส่ JSON
 - ใส่ emoji ได้ไม่เกิน 1 ตัว (ไม่ใส่ก็ได้)`
+
+/** Always-appended call-to-action (kept out of the LLM so it never goes missing). */
+const PLAN_CTA = 'แตะเพื่อวางแผนวันของคุณ'
 
 /** A "message" quick reply: tapping it sends `text` to the agent as a user message. */
 function messageQuickReply(label: string, text: string): TToastQuickReplyItem {
@@ -162,7 +165,9 @@ export class SendDailyBriefingModule implements IScheduleModule {
     const summary =
       parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(', ')} และ${parts[parts.length - 1]!}`
 
-    const { text, source, usage } = await this.composeMessage(summary)
+    const { text: body, source, usage } = await this.composeMessage(summary)
+    // Always append the CTA deterministically so it never depends on the LLM.
+    const text = `${body} — ${PLAN_CTA}`
     return { text, quickReply, scheduleCount, todoCount, source, usage }
   }
 
@@ -172,7 +177,7 @@ export class SendDailyBriefingModule implements IScheduleModule {
    * either way for cost accounting.
    */
   private async composeMessage(summary: string): Promise<{ text: string; source: 'llm' | 'fallback'; usage: IBriefingUsage }> {
-    const fallbackText = `วันนี้คุณมี${summary} — แตะเพื่อวางแผนวันของคุณ`
+    const fallbackText = `วันนี้คุณมี${summary}` // CTA is appended by the caller
     const noUsage: IBriefingUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
 
     try {
@@ -196,12 +201,14 @@ export class SendDailyBriefingModule implements IScheduleModule {
     }
   }
 
-  /** Normalizes model output to a single clean line (strips quotes/newlines, caps length). */
+  /** Normalizes model output to a single clean line (strips quotes/newlines, a stray CTA, caps length). */
   private sanitize(raw: string): string {
     const text = raw
       .trim()
       .replace(/^["'`]+|["'`]+$/g, '')
       .replace(/\s*\n+\s*/g, ' ')
+      // Drop any tap-CTA the model added despite instructions (we append our own).
+      .replace(/\s*[—–-]?\s*แตะ(เพื่อ)?วาง.*$/u, '')
       .trim()
     return text.length > 200 ? text.slice(0, 200).trim() : text
   }
