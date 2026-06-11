@@ -133,17 +133,19 @@ export class CheckSchedulesModule implements IScheduleModule {
     scheduledAt: Dayjs,
     payload: any,
   ): Promise<void> {
+    // Atomically claim the pre-notification slot so only ONE replica sends it.
+    const claimed = await this.claimNotificationSlot(doc.ref, 'before_sent_at')
+    if (!claimed) {
+      logger.info({ scheduleId: doc.id }, '⏭️ Pre-notification already sent by another worker — skipping')
+      return
+    }
+
     logger.info({ scheduleId: doc.id }, '🔔 Pre-Notification Triggered (15 minutes prior)')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log(`🔔 [PRE-NOTIFICATION - 15 MINS PRIOR] Schedule ID: ${doc.id}`)
     console.log(`⏰ Scheduled At: ${scheduledAt.format('YYYY-MM-DD HH:mm:ss')}`)
     console.log(`📦 Payload: ${JSON.stringify(payload || {}, null, 2)}`)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-
-    await doc.ref.update({
-      before_sent_at: admin.firestore.FieldValue.serverTimestamp(),
-    })
-    logger.info({ scheduleId: doc.id }, '✅ Updated before_sent_at timestamp in Firestore')
 
     // Add chatbot message to the chats collection so it appears in history
     const data = doc.data()
@@ -161,17 +163,20 @@ export class CheckSchedulesModule implements IScheduleModule {
     scheduledAt: Dayjs,
     payload: any,
   ): Promise<void> {
+    // Atomically claim the due slot: only the FIRST worker to set sent_at proceeds to notify.
+    // Prevents duplicate notifications when this every-minute job runs in more than one replica.
+    const claimed = await this.claimNotificationSlot(doc.ref, 'sent_at')
+    if (!claimed) {
+      logger.info({ scheduleId: doc.id }, '⏭️ Due-notification already sent by another worker — skipping')
+      return
+    }
+
     logger.info({ scheduleId: doc.id }, '🔔 Notification Triggered (Exact Scheduled Time)')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log(`🔔 [NOTIFICATION - DUE NOW] Schedule ID: ${doc.id}`)
     console.log(`⏰ Scheduled At: ${scheduledAt.format('YYYY-MM-DD HH:mm:ss')}`)
     console.log(`📦 Payload: ${JSON.stringify(payload || {}, null, 2)}`)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-
-    await doc.ref.update({
-      sent_at: admin.firestore.FieldValue.serverTimestamp(),
-    })
-    logger.info({ scheduleId: doc.id }, '✅ Updated sent_at timestamp in Firestore')
 
     // Add chatbot message to the chats collection so it appears in history
     const data = doc.data()
@@ -181,6 +186,33 @@ export class CheckSchedulesModule implements IScheduleModule {
       const content = this.buildNotificationContent(doc.id, data, scheduledAt, payload, 'due')
       await this.saveAndEmitNotification(userId, content)
       logger.info({ scheduleId: doc.id, userId }, '💬 Saved due-notification message to chats collection')
+    }
+  }
+
+  /**
+   * Atomically claims a notification slot for a schedule doc by setting `field` (sent_at /
+   * before_sent_at) only if it is still empty. Returns true to the single winning worker.
+   * The in-memory cache can be stale across replicas, so the transactional re-read is what
+   * actually guarantees each notification fires exactly once.
+   */
+  private async claimNotificationSlot(
+    ref: admin.firestore.DocumentReference,
+    field: 'sent_at' | 'before_sent_at',
+  ): Promise<boolean> {
+    try {
+      return await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref)
+        if (!snap.exists) return false
+        if (snap.data()?.[field]) return false // already claimed by another worker
+        tx.update(ref, { [field]: admin.firestore.FieldValue.serverTimestamp() })
+        return true
+      })
+    } catch (error) {
+      logger.error(
+        { error, scheduleId: ref.id, field },
+        '[check-schedules] failed to claim notification slot — skipping',
+      )
+      return false
     }
   }
 

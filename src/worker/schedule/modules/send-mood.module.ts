@@ -1,6 +1,8 @@
 import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
+import { getLocalTime } from '#/common/utils/datetime.util'
 import { createMoodCardChat } from '#/features/chats/v1/mood-card.helper'
+import { acquireRunLock } from '#/worker/schedule/schedule-lock'
 
 import type { IScheduleModule } from '#/worker/schedule/schedule.type'
 
@@ -10,6 +12,19 @@ export class SendMoodToAllModule implements IScheduleModule {
   readonly timezone = 'Asia/Bangkok'
 
   async execute(): Promise<void> {
+    // Run at most once per day across all processes/replicas. Without this, when the schedule
+    // worker is started in more than one process (e.g. both the API server and the worker),
+    // each fires this 18:00 cron and every user receives the mood card multiple times.
+    const today = getLocalTime().format('YYYY-MM-DD')
+    const acquired = await acquireRunLock(this.name, today)
+    if (!acquired) {
+      logger.info(
+        { module: this.name, date: today },
+        '⏭️ [SendMoodToAllModule] mood survey already sent today (lock held elsewhere) — skipping',
+      )
+      return
+    }
+
     logger.info('👥 [SendMoodToAllModule] Querying users collection in Firestore...')
 
     try {

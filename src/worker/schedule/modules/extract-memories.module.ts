@@ -1,8 +1,9 @@
 import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
 import { AIService } from '#/common/services/ai.service'
-import { getUtcTime } from '#/common/utils/datetime.util'
+import { getLocalTime, getUtcTime } from '#/common/utils/datetime.util'
 import { envVariables } from '#/factory'
+import { acquireRunLock } from '#/worker/schedule/schedule-lock'
 
 import type { IScheduleModule } from '#/worker/schedule/schedule.type'
 
@@ -43,6 +44,15 @@ export class ExtractMemoriesModule implements IScheduleModule {
   readonly timezone = 'Asia/Bangkok'
 
   async execute(): Promise<void> {
+    // Collapse duplicate fires within the same 2-hour window (multiple processes/replicas) into
+    // one run, so we don't re-spend LLM tokens and double-log usage for the same messages.
+    const slot = getLocalTime().format('YYYY-MM-DD-HH')
+    const acquired = await acquireRunLock(this.name, slot)
+    if (!acquired) {
+      logger.info({ module: this.name, slot }, '⏭️ [ExtractMemoriesModule] already ran this window — skipping')
+      return
+    }
+
     logger.info('🧠 [ExtractMemoriesModule] scanning recent user messages for long-term memories...')
     const usersSnap = await db.collection('users').get()
     let usersWithNewMemories = 0
@@ -98,6 +108,7 @@ async function extractRecentUserMemories(userId: string): Promise<number> {
     systemInstruction: EXTRACTION_INSTRUCTION,
     temperature: 0,
     responseMimeType: 'application/json',
+    meta: { source: 'extract-memories', userId },
   })
   const text = response.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text || ''
   const facts = parseFacts(text)

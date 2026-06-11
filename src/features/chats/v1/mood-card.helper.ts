@@ -3,6 +3,7 @@ import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
 import { AIService } from '#/common/services/ai.service'
 import { sseBroker } from '#/common/services/sse-broker.service'
+import { extractGeminiUsage, type ILlmUsage } from '#/common/services/usage-logger.service'
 import { getUUID } from '#/common/utils/helper.util'
 import { mapRawChatToResponse } from '#/features/chats/v1/chat.mapper'
 import { getCurrentSessionId } from '#/features/chats/v1/chat-session.helper'
@@ -106,11 +107,17 @@ async function loadUsername(userId: string): Promise<string> {
   return 'ปี๊บ'
 }
 
+/**
+ * Generates the mood acknowledgement reply. This is a CHAT reply, so its token usage is
+ * returned to the caller to persist on the chat document (NOT the central llm_usage_log) —
+ * see pushBotMoodResultMessage.
+ */
 export async function generateMoodReply(
   userId: string,
   option: TMoodOptionId,
   note?: string | null,
-): Promise<string> {
+): Promise<{ text: string; usage: ILlmUsage }> {
+  const noUsage: ILlmUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
   try {
     const ai = new AIService()
     const username = await loadUsername(userId)
@@ -118,12 +125,14 @@ export async function generateMoodReply(
     const systemInstruction = `${CLOUDY_PERSONA}\n\n${userProfile}\n\n${MOOD_REPLY_TASK}`
     const noteLine = note ? `\nUser's note: "${note}"` : ''
     const prompt = `คุณ ${username} เพิ่งบันทึกอารมณ์ของวันนี้: "${option}".${noteLine}\nกรุณาตอบกลับ user เป็นภาษาไทยสั้นๆ ไม่เกิน 60 คำ ตาม persona และกฎที่ระบุไว้ และเรียก user ว่า "คุณ ${username}" ตรงๆ.`
-    const text = await ai.ask(prompt, systemInstruction)
-    const trimmed = text.trim()
-    return trimmed.length > 0 ? trimmed : MOOD_REPLY_FALLBACK[option]
+    // No `meta` here: usage is attached to the chat doc, not the central ledger.
+    const response = await ai.generate([{ role: 'user', parts: [{ text: prompt }] }], { systemInstruction })
+    const usage = extractGeminiUsage(response)
+    const trimmed = (response.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text ?? '').trim()
+    return { text: trimmed.length > 0 ? trimmed : MOOD_REPLY_FALLBACK[option], usage }
   } catch (error) {
     logger.warn({ error, option }, '[mood] LLM reply generation failed, using fallback')
-    return MOOD_REPLY_FALLBACK[option]
+    return { text: MOOD_REPLY_FALLBACK[option], usage: noUsage }
   }
 }
 
@@ -172,7 +181,7 @@ export async function pushBotMoodResultMessage(
   input: IPushBotMoodResultInput,
 ): Promise<void> {
   try {
-    const aiMessage = await generateMoodReply(userId, input.emotion, input.note)
+    const { text: aiMessage, usage } = await generateMoodReply(userId, input.emotion, input.note)
     const createdAtIso = input.createdAt.toISOString()
     const content = [
       { type: 'text' as const, text: 'Mood saved 🌤️' },
@@ -197,6 +206,10 @@ export async function pushBotMoodResultMessage(
       feedback: null,
       error: null,
       created_at: docCreatedAt,
+      // Mood reply is a chat reply → usage lives on the chat doc (not the central ledger).
+      input_tokens: usage.inputTokens,
+      output_tokens: usage.outputTokens,
+      total_tokens: usage.totalTokens,
     })
 
     const message = mapRawChatToResponse({

@@ -334,6 +334,7 @@ export class SummaryService {
           systemInstruction: this.buildSystemInstruction(username),
           temperature: 0.5,
           responseMimeType: 'application/json',
+          meta: { source: 'summary', kind: 'monthly-insight' },
         },
       )
       const text = response.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text || ''

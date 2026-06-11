@@ -1,6 +1,7 @@
 import { GoogleGenAI, type GenerateContentResponse, type Content, type Tool } from '@google/genai'
 
 import { logger } from '#/common/libs/logger.lib'
+import { extractGeminiUsage, logLlmUsage, type ILlmUsageMeta } from '#/common/services/usage-logger.service'
 import { envVariables } from '#/factory'
 
 export class AIService {
@@ -29,6 +30,12 @@ export class AIService {
       temperature?: number
       responseMimeType?: string
       thinkingBudget?: number
+      /**
+       * When provided, token usage for this call is recorded in the central
+       * `llm_usage_log` ledger. Omit for chat-reply calls — those persist usage
+       * on the chat document instead (see usage-logger.service.ts).
+       */
+      meta?: ILlmUsageMeta
     },
   ): Promise<GenerateContentResponse> {
     try {
@@ -47,6 +54,10 @@ export class AIService {
           thinkingConfig: { thinkingBudget: options?.thinkingBudget ?? 0 },
         },
       })
+
+      if (options?.meta) {
+        await logLlmUsage({ meta: options.meta, model: modelName, usage: extractGeminiUsage(response) })
+      }
 
       return response
     } catch (error) {

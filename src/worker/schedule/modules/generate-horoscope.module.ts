@@ -4,6 +4,7 @@ import { AIService } from '#/common/services/ai.service'
 import { getLocalTime, getUtcTime } from '#/common/utils/datetime.util'
 import { ZODIAC_SIGNS } from '#/features/horoscopes/v1/horoscope.constant'
 import { envVariables } from '#/factory'
+import { acquireRunLock } from '#/worker/schedule/schedule-lock'
 
 import type { IScheduleModule } from '#/worker/schedule/schedule.type'
 
@@ -51,6 +52,19 @@ export class GenerateHoroscopeModule implements IScheduleModule {
   async execute(): Promise<void> {
     // 23:30 today → generate for tomorrow.
     const targetDate = getLocalTime().add(1, 'day').format('YYYY-MM-DD')
+
+    // One generation run per target date across all processes/replicas. The per-doc exists-check
+    // keeps the stored result correct, but without this lock each replica still fires its own LLM
+    // calls before the check — this stops that wasted (billed) work.
+    const acquired = await acquireRunLock(this.name, targetDate)
+    if (!acquired) {
+      logger.info(
+        { module: this.name, targetDate },
+        '⏭️ [GenerateHoroscopeModule] already generating for this date — skipping',
+      )
+      return
+    }
+
     await generateHoroscopesForDate(targetDate)
   }
 }
@@ -160,6 +174,7 @@ async function generateContent(
     systemInstruction: GENERATION_INSTRUCTION,
     temperature: 0.9,
     responseMimeType: 'application/json',
+    meta: { source: 'horoscope', kind: sign.key },
   })
   const text = response.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text || ''
   return parseHoroscope(text)

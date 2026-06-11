@@ -72,6 +72,7 @@ export class ParserService {
         systemInstruction,
         temperature: 0.1,
         responseMimeType: 'application/json',
+        meta: { source: 'parser', kind: 'classify' },
       },
     )
     const text = response.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text || '{}'
