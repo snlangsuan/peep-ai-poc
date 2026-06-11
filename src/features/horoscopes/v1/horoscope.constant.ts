@@ -5,22 +5,22 @@ export interface IZodiacSign {
 }
 
 /**
- * The 12 zodiac signs with FIXED Thai names and date ranges (Western tropical).
+ * The 12 zodiac signs with FIXED Thai names and date ranges (Thai sidereal / ราศีแบบไทย).
  * Single source of truth shared by the generator cron and the read API.
  */
 export const ZODIAC_SIGNS: ReadonlyArray<IZodiacSign> = [
-  { key: 'aries', name: 'ราศีเมษ', dateRange: '22 มี.ค. - 21 เม.ย.' },
-  { key: 'taurus', name: 'ราศีพฤษภ', dateRange: '22 เม.ย. - 21 พ.ค.' },
-  { key: 'gemini', name: 'ราศีเมถุน', dateRange: '22 พ.ค. - 21 มิ.ย.' },
-  { key: 'cancer', name: 'ราศีกรกฎ', dateRange: '22 มิ.ย. - 21 ก.ค.' },
-  { key: 'leo', name: 'ราศีสิงห์', dateRange: '22 ก.ค. - 21 ส.ค.' },
-  { key: 'virgo', name: 'ราศีกันย์', dateRange: '22 ส.ค. - 21 ก.ย.' },
-  { key: 'libra', name: 'ราศีตุลย์', dateRange: '22 ก.ย. - 21 ต.ค.' },
-  { key: 'scorpio', name: 'ราศีพิจิก', dateRange: '22 ต.ค. - 21 พ.ย.' },
-  { key: 'sagittarius', name: 'ราศีธนู', dateRange: '22 พ.ย. - 21 ธ.ค.' },
-  { key: 'capricorn', name: 'ราศีมังกร', dateRange: '22 ธ.ค. - 21 ม.ค.' },
-  { key: 'aquarius', name: 'ราศีกุมภ์', dateRange: '22 ม.ค. - 18 ก.พ.' },
-  { key: 'pisces', name: 'ราศีมีน', dateRange: '19 ก.พ. - 21 มี.ค.' },
+  { key: 'aries', name: 'ราศีเมษ', dateRange: '13 เม.ย. - 13 พ.ค.' },
+  { key: 'taurus', name: 'ราศีพฤษภ', dateRange: '14 พ.ค. - 13 มิ.ย.' },
+  { key: 'gemini', name: 'ราศีเมถุน', dateRange: '14 มิ.ย. - 13 ก.ค.' },
+  { key: 'cancer', name: 'ราศีกรกฎ', dateRange: '14 ก.ค. - 16 ส.ค.' },
+  { key: 'leo', name: 'ราศีสิงห์', dateRange: '17 ส.ค. - 16 ก.ย.' },
+  { key: 'virgo', name: 'ราศีกันย์', dateRange: '17 ก.ย. - 16 ต.ค.' },
+  { key: 'libra', name: 'ราศีตุลย์', dateRange: '17 ต.ค. - 15 พ.ย.' },
+  { key: 'scorpio', name: 'ราศีพิจิก', dateRange: '16 พ.ย. - 15 ธ.ค.' },
+  { key: 'sagittarius', name: 'ราศีธนู', dateRange: '16 ธ.ค. - 14 ม.ค.' },
+  { key: 'capricorn', name: 'ราศีมังกร', dateRange: '15 ม.ค. - 12 ก.พ.' },
+  { key: 'aquarius', name: 'ราศีกุมภ์', dateRange: '13 ก.พ. - 13 มี.ค.' },
+  { key: 'pisces', name: 'ราศีมีน', dateRange: '14 มี.ค. - 12 เม.ย.' },
 ]
 
 const THAI_MONTH_ABBR: Record<string, number> = {

@@ -11,6 +11,7 @@ import { pushDailyFortune } from '#/features/chats/v1/fortune-card.helper'
 import { pushMonthlySummary } from '#/features/chats/v1/summary-card.helper'
 import { db } from '#/common/libs/firebase.lib'
 import { getUtcTime, getLocalTime } from '#/common/utils/datetime.util'
+import { SendDailyBriefingModule } from '#/worker/schedule/modules/send-daily-briefing.module'
 
 import type { Bindings, JsonInputSchema, QueryInputSchema, Variables } from '#/common/types/app.type'
 import type { TSuccessResponse } from '#/common/types/response.type'
@@ -18,8 +19,42 @@ import type { ChatService } from '#/features/chats/v1/chat.service'
 import type { TChatCreatePayload, TChatFilterPayload, TChatItemResponse, TChatActionPayload, TChatMoodUpdatePayload, TChatMoodLinkQuery, TChatMoodSendPayload, TChatFeedbackPayload } from '#/features/chats/v1/chat.type'
 import type { Context } from 'hono'
 
+/** Shared instance for the manual daily-briefing test trigger. */
+const dailyBriefingModule = new SendDailyBriefingModule()
+
 export class ChatController {
   constructor(private readonly service: ChatService) {}
+
+  /**
+   * Manual trigger to send the morning daily-briefing toast to the authenticated user
+   * right now (the same flow the 08:00 cron runs). For testing/ops — emits over SSE only.
+   */
+  triggerDailyBriefing = async <
+    E extends { Bindings: Bindings; Variables: Variables },
+    P extends string,
+    I extends Record<string, never>,
+  >(
+    c: Context<E, P, I>,
+  ): Promise<Response> => {
+    const userId = c.get('user_id')
+    // How many SSE connections are currently open for this user. 0 → the toast would be
+    // dropped (the client isn't connected, or connected as a different user/api-key).
+    const subscribers = sseBroker.subscriberCount(userId)
+
+    // Uses MOCK counts so a full toast (with quick replies) is always emitted for testing,
+    // regardless of the user's real data. Override via ?schedules=&todos=.
+    const schedules = this.parsePositiveInt(c.req.query('schedules'), 3)
+    const todos = this.parsePositiveInt(c.req.query('todos'), 5)
+    const result = await dailyBriefingModule.sendMockToUser(userId, schedules, todos)
+
+    return c.json({ success: true, subscribers, mock: { schedules, todos }, ...result })
+  }
+
+  /** Parses a non-negative integer query value, falling back to `fallback`. */
+  private parsePositiveInt(value: string | undefined, fallback: number): number {
+    const n = Number(value)
+    return Number.isInteger(n) && n >= 0 ? n : fallback
+  }
 
   send = async <
     E extends { Bindings: Bindings; Variables: Variables },

@@ -44,6 +44,8 @@ chatRoute.post('/mood', updateMoodDoc, zValidator('json', chatMoodUpdatePayloadS
 chatRoute.post('/feedback', updateFeedbackDoc, zValidator('json', chatFeedbackPayloadSchema), chatController.updateFeedback)
 chatRoute.get('/', listChatDoc, zValidator('query', chatFilterPayloadSchema), chatController.list)
 chatRoute.get('/stream', streamChatDoc, chatController.stream)
+// Manual trigger to fire the morning daily-briefing toast to the caller (testing/ops).
+chatRoute.post('/briefing/test', chatController.triggerDailyBriefing)
 
 export default chatRoute
 

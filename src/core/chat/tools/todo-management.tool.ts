@@ -18,6 +18,11 @@ export class TodoManagementTool implements IChatTool {
         type: 'STRING',
         description: 'ไอดีเฉพาะของ Todo (จำเป็นต้องส่งเมื่อ action เป็น "get", "update", "delete")',
       },
+      confirm: {
+        type: 'BOOLEAN',
+        description:
+          'ใช้กับ action "delete" เท่านั้น: ตั้งเป็น true เมื่อผู้ใช้ "ยืนยันแล้ว" ว่าจะลบรายการ. โดยปกติไม่ต้องส่ง (หรือ false) — ระบบจะคืน needs_confirmation พร้อมรายละเอียดรายการให้ถามผู้ใช้ก่อน เมื่อผู้ใช้ยืนยันค่อยเรียก delete ซ้ำพร้อม confirm=true',
+      },
       title: {
         type: 'STRING',
         description: 'หัวข้อของ Todo (ใช้สร้างทีละรายการ หรือใช้แก้ไขใน "update")',
@@ -51,6 +56,11 @@ export class TodoManagementTool implements IChatTool {
           completed: { type: 'BOOLEAN', description: 'กรองสถานะ: true (ดึงเฉพาะที่เสร็จแล้ว), false (ดึงเฉพาะที่ยังไม่เสร็จ)' },
         },
       },
+      lookup: {
+        type: 'BOOLEAN',
+        description:
+          'ใช้กับ action "list" เท่านั้น: ตั้งเป็น true เมื่อ list เพื่อ "ค้นหา uuid ภายใน" สำหรับนำไปลบ/แก้ไข (ไม่ใช่เพื่อแสดงให้ผู้ใช้ดู) — ระบบจะไม่ส่งการ์ดรายการให้ผู้ใช้ ป้องกันการขึ้นการ์ดโดยไม่ตั้งใจ',
+      },
     },
     required: ['action'],
   }
@@ -65,15 +75,17 @@ export class TodoManagementTool implements IChatTool {
     args: {
       action: 'create' | 'get' | 'list' | 'update' | 'delete'
       uuid?: string
+      confirm?: boolean
       title?: string
       description?: string
       completed?: boolean
       todos?: Array<{ title: string; description?: string }>
       filter?: { page?: number; limit?: number; completed?: boolean }
+      lookup?: boolean
     },
     context: IChatContext,
   ): Promise<string> {
-    const { action, uuid, title, description, completed, todos, filter } = args
+    const { action, uuid, confirm, title, description, completed, todos, filter, lookup } = args
     const userId = context.userId
 
     // Force default limit to 10 if not provided, as requested for pagination of 10 items
@@ -90,11 +102,11 @@ export class TodoManagementTool implements IChatTool {
         case 'get':
           return await this.handleGet(userId, uuid)
         case 'list':
-          return this.handleList(userId, actualFilter)
+          return this.handleList(userId, actualFilter, lookup)
         case 'update':
           return await this.handleUpdate(userId, { uuid, title, description, completed })
         case 'delete':
-          return await this.handleDelete(userId, uuid)
+          return await this.handleDelete(userId, uuid, confirm)
         default:
           return JSON.stringify({ error: `Unsupported action: "${action}"` })
       }
@@ -189,22 +201,44 @@ export class TodoManagementTool implements IChatTool {
     })
   }
 
-  private async handleDelete(userId: string, uuid?: string): Promise<string> {
+  private async handleDelete(userId: string, uuid?: string, confirm?: boolean): Promise<string> {
     if (!uuid) {
       return JSON.stringify({ error: 'Missing required field: "uuid" is required for delete action.' })
     }
+
+    // Fetch first so we can show the user exactly what will be deleted (throws if not found / not theirs).
+    const target = await this.service.getTodo(userId, uuid)
+
+    // Unless the user has already confirmed, do NOT delete — ask for confirmation first.
+    if (!confirm) {
+      return JSON.stringify({
+        status: 'needs_confirmation',
+        reason: 'delete',
+        action: 'delete',
+        target: { uuid, title: target.title, completed: target.completed },
+        message:
+          'ยืนยันการลบ: แจ้งผู้ใช้ว่ากำลังจะลบรายการสิ่งที่ต้องทำนี้ (ระบุชื่อจาก target) แล้วถามว่าต้องการลบจริงไหม ถ้าผู้ใช้ยืนยันให้เรียก action "delete" ซ้ำด้วย uuid เดิมพร้อม confirm=true',
+      })
+    }
+
     await this.service.delete(userId, uuid)
-    return JSON.stringify({ message: `ลบรายการสิ่งที่ต้องทำสำเร็จแล้วจ้า!` })
+    return JSON.stringify({
+      status: 'success',
+      message: `ลบรายการ "${target.title}" สำเร็จแล้วจ้า!`,
+    })
   }
 
   private async handleList(
     userId: string,
     actualFilter: { page: number; limit: number; completed?: boolean },
+    lookup?: boolean,
   ): Promise<string> {
     const result = await this.service.getTodos(userId, actualFilter)
 
     let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
-    if (result.items.length > 0) {
+    // In lookup mode the agent is only resolving a uuid (e.g. before delete), so don't
+    // push a list card or suppress the agent's response.
+    if (!lookup && result.items.length > 0) {
       const saved = await pushBotTodoListMessage(userId, result.items, { emitSSE: false })
       if (saved) {
         savedForAgentDone = {

@@ -46,6 +46,11 @@ class SseBroker {
       handler(event)
     }
   }
+
+  /** Number of active SSE connections for a user (0 means an emit would be dropped). */
+  subscriberCount(userId: string): number {
+    return this.subscribers.get(userId)?.size ?? 0
+  }
 }
 
 export const sseBroker = new SseBroker()

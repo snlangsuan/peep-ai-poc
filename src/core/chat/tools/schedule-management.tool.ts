@@ -54,7 +54,7 @@ export class ScheduleManagementTool implements IChatTool {
       confirm: {
         type: 'BOOLEAN',
         description:
-          'ใช้กับ action "create" เท่านั้น: ตั้งเป็น true เมื่อผู้ใช้ "ยืนยันแล้ว" ว่าจะสร้างกำหนดการแม้เวลาจะซ้อนทับกับนัดเดิม. โดยปกติไม่ต้องส่ง (หรือ false) ระบบจะตรวจเวลาซ้อนทับให้ก่อน ถ้าซ้อนทับจะถามผู้ใช้ก่อน — เมื่อผู้ใช้ตอบยืนยันค่อยเรียก create ซ้ำพร้อม confirm=true',
+          'ใช้กับ action "create" และ "delete": ตั้งเป็น true เมื่อผู้ใช้ "ยืนยันแล้ว". สำหรับ create = ยืนยันสร้างแม้เวลาจะซ้อนทับกับนัดเดิม. สำหรับ delete = ยืนยันว่าจะลบจริง. โดยปกติไม่ต้องส่ง (หรือ false) — ระบบจะคืน needs_confirmation ให้ถามผู้ใช้ก่อน เมื่อผู้ใช้ตอบยืนยันค่อยเรียกซ้ำพร้อม confirm=true',
       },
       schedules: {
         type: 'ARRAY',
@@ -92,6 +92,11 @@ export class ScheduleManagementTool implements IChatTool {
           limit: { type: 'NUMBER', description: 'จำนวนรายการต่อหน้า (เริ่มต้น 25)' },
         },
       },
+      lookup: {
+        type: 'BOOLEAN',
+        description:
+          'ใช้กับ action "list" เท่านั้น: ตั้งเป็น true เมื่อ list เพื่อ "ค้นหา uuid ภายใน" สำหรับนำไปลบ/แก้ไข (ไม่ใช่เพื่อแสดงให้ผู้ใช้ดู) — ระบบจะไม่ส่งการ์ดรายการให้ผู้ใช้ ป้องกันการขึ้นการ์ด list โดยไม่ตั้งใจ',
+      },
     },
     required: ['action'],
   }
@@ -122,10 +127,11 @@ export class ScheduleManagementTool implements IChatTool {
         note?: string
       }>
       filter?: { startDate?: string; endDate?: string; page?: number; limit?: number }
+      lookup?: boolean
     },
     context: IChatContext,
   ): Promise<string> {
-    const { action, uuid, scheduledAt, endAt, title, invitees, repeat, note, confirm, schedules, filter } = args
+    const { action, uuid, scheduledAt, endAt, title, invitees, repeat, note, confirm, schedules, filter, lookup } = args
     const userId = context.userId
 
     try {
@@ -142,7 +148,7 @@ export class ScheduleManagementTool implements IChatTool {
         }
 
         case 'list':
-          return this.handleList(userId, filter)
+          return this.handleList(userId, filter, lookup)
 
         case 'update': {
           if (!uuid) {
@@ -177,20 +183,8 @@ export class ScheduleManagementTool implements IChatTool {
           })
         }
 
-        case 'delete': {
-          if (!uuid) {
-            return JSON.stringify({ error: 'Missing required field: "uuid" is required for delete action.' })
-          }
-          // Fetch the schedule first so we can report exactly what was removed.
-          // getSchedule throws if it doesn't exist / isn't the user's (handled below).
-          const target = await this.service.getSchedule(userId, uuid)
-          await this.service.delete(userId, uuid)
-          return JSON.stringify({
-            status: 'success',
-            message: `ลบกำหนดการ "${target.payload.title}" เรียบร้อยแล้ว แจ้งผู้ใช้ว่าลบรายการนี้สำเร็จ พร้อมระบุชื่อและวันเวลาของกำหนดการที่ลบไป`,
-            deleted: this.formatScheduleForLLM(target),
-          })
-        }
+        case 'delete':
+          return this.handleDelete(userId, uuid, confirm)
 
         default:
           return JSON.stringify({ error: `Unsupported action: "${action}"` })
@@ -277,6 +271,34 @@ export class ScheduleManagementTool implements IChatTool {
     })
   }
 
+  private async handleDelete(userId: string, uuid?: string, confirm?: boolean): Promise<string> {
+    if (!uuid) {
+      return JSON.stringify({ error: 'Missing required field: "uuid" is required for delete action.' })
+    }
+    // Fetch the schedule first so we can report exactly what will be / was removed.
+    // getSchedule throws if it doesn't exist / isn't the user's (handled by the caller).
+    const target = await this.service.getSchedule(userId, uuid)
+
+    // Unless the user has already confirmed, do NOT delete — ask for confirmation first.
+    if (!confirm) {
+      return JSON.stringify({
+        status: 'needs_confirmation',
+        reason: 'delete',
+        action: 'delete',
+        target: this.formatScheduleForLLM(target),
+        message:
+          'ยืนยันการลบ: แจ้งผู้ใช้ว่ากำลังจะลบกำหนดการนี้ (ระบุชื่อและวันเวลาจาก target.scheduled_at_local) แล้วถามว่าต้องการลบจริงไหม ถ้าผู้ใช้ยืนยันให้เรียก action "delete" ซ้ำด้วย uuid เดิมพร้อม confirm=true',
+      })
+    }
+
+    await this.service.delete(userId, uuid)
+    return JSON.stringify({
+      status: 'success',
+      message: `ลบกำหนดการ "${target.payload.title}" เรียบร้อยแล้ว แจ้งผู้ใช้ว่าลบรายการนี้สำเร็จ พร้อมระบุชื่อและวันเวลาของกำหนดการที่ลบไป`,
+      deleted: this.formatScheduleForLLM(target),
+    })
+  }
+
   /** Detects which create items overlap an existing schedule's time. */
   private async detectOverlapConflicts(
     userId: string,
@@ -350,6 +372,7 @@ export class ScheduleManagementTool implements IChatTool {
   private async handleList(
     userId: string,
     filter?: { startDate?: string; endDate?: string; page?: number; limit?: number },
+    lookup?: boolean,
   ): Promise<string> {
     // No date specified at all → default to today only.
     let startDate = filter?.startDate
@@ -365,7 +388,10 @@ export class ScheduleManagementTool implements IChatTool {
       limit: filter?.limit,
     })
 
+    // In lookup mode the agent is only resolving a uuid (e.g. before delete/update),
+    // so don't push a list card or suppress the agent's response.
     const shouldPushCard =
+      !lookup &&
       result.items.length > 0 &&
       !!startDate &&
       !!endDate &&

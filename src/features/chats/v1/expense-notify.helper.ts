@@ -135,7 +135,7 @@ export async function pushBotExpenseListMessage(
         content,
         created_at: createdAt,
       })
-      sseBroker.emit(userId, { type: 'bot_message', message })
+      sseBroker.emit(userId, { type: 'done', message })
     }
     logger.info(
       { userId, chatId: id, expenseCount: items.length, total, emitSSE },
@@ -144,6 +144,59 @@ export async function pushBotExpenseListMessage(
     return { id, content, createdAt }
   } catch (error) {
     logger.warn({ error, userId }, '[chat] failed to push bot expense_list message')
+    return null
+  }
+}
+
+/**
+ * Pushes a category-grouped expense summary card (`expense_summary`).
+ * `expenses` must already be the FULL set for the period (not a paginated slice) so
+ * `total` and per-category sums are accurate. Returns null when there are no expenses.
+ */
+export async function pushBotExpenseSummaryMessage(
+  userId: string,
+  input: { expenses: TExpenseResponse[]; startDate: string; endDate: string },
+  opts: IPushBotOptions = {},
+): Promise<IPushBotChatResult | null> {
+  if (input.expenses.length === 0) return null
+  const emitSSE = opts.emitSSE !== false
+
+  try {
+    const total = input.expenses.reduce((sum, e) => sum + (e.amount ?? 0), 0)
+    const summary: Record<string, number> = {}
+    for (const e of input.expenses) {
+      summary[e.category] = (summary[e.category] ?? 0) + (e.amount ?? 0)
+    }
+
+    const content: TChatResponse['content'] = [
+      {
+        type: 'expense_summary',
+        total,
+        start_date: input.startDate,
+        end_date: input.endDate,
+        summary,
+      },
+    ]
+
+    const { id, createdAt } = await saveChatBotMessage(userId, content)
+
+    if (emitSSE) {
+      const message = mapRawChatToResponse({
+        id,
+        user_id: userId,
+        sender_id: 'bot',
+        content,
+        created_at: createdAt,
+      })
+      sseBroker.emit(userId, { type: 'done', message })
+    }
+    logger.info(
+      { userId, chatId: id, total, categories: Object.keys(summary).length, emitSSE },
+      '[chat] pushed bot expense_summary message (firestore + maybe SSE)',
+    )
+    return { id, content, createdAt }
+  } catch (error) {
+    logger.warn({ error, userId }, '[chat] failed to push bot expense_summary message')
     return null
   }
 }

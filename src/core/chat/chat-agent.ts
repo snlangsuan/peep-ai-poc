@@ -99,6 +99,10 @@ export class ChatAgent {
   // Multiple entries occur when one user message triggers several actions (e.g. schedule +
   // expense): each tool pre-saves its own card and all of them must be emitted.
   private pendingAgentSavedMessages: ISavedBotMessage[] = []
+  // Set when a tool returns `status: 'needs_confirmation'`. The agent's own text (the
+  // confirmation question) must win over any card a prior lookup step pre-saved, so once
+  // this is true we drop pending cards and ignore later suppression for the turn.
+  private confirmationPending = false
 
   private static readonly HISTORY_WINDOW = 20
   private static readonly SUMMARIZE_THRESHOLD = 40
@@ -265,7 +269,8 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       const jsonText = await this.callIntentClassifierLLM(systemInstruction, classifierInput)
       const result = JSON.parse(jsonText) as IChatIntent
       if (result.type === 'direct_tool' && result.toolName && directInvokableNames.includes(result.toolName)) {
-        return { type: 'direct_tool', toolName: result.toolName }
+        const toolName = this.redirectDomainSpecificSummary(result.toolName, message)
+        return { type: 'direct_tool', toolName }
       }
       if (result.type === 'general_chat' || result.type === 'complex_agent') {
         return { type: result.type }
@@ -275,6 +280,24 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     }
 
     return { type: 'complex_agent' }
+  }
+
+  /**
+   * Deterministic guard: `summary_tool` builds an ALL-domains monthly overview. When the user
+   * clearly asks for a single-domain summary ("สรุปค่าใช้จ่าย"), route to that domain's tool
+   * instead — the expense tool then forces action='summary' on its own.
+   */
+  private redirectDomainSpecificSummary(toolName: string, message: string): string {
+    if (toolName !== 'summary_tool') return toolName
+    const expenseWords = ['ค่าใช้จ่าย', 'รายจ่าย', 'รายรับ', 'ใช้จ่าย', 'expense', 'ค่าใช้']
+    if (expenseWords.some((w) => message.includes(w)) && this.tools.some((t) => t.name === 'manage_expenses')) {
+      logger.info(
+        { userId: this.userId },
+        '[classifier] redirected summary_tool → manage_expenses (domain-specific expense summary)',
+      )
+      return 'manage_expenses'
+    }
+    return toolName
   }
 
   private async callIntentClassifierLLM(systemInstruction: string, message: string): Promise<string> {
@@ -894,6 +917,7 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
     this.usedSkills.clear()
     this.suppressFinalAgentMessage = false
     this.pendingAgentSavedMessages = []
+    this.confirmationPending = false
   }
 
   private parseToolPayloadObject(payload: unknown): Record<string, unknown> | null {
@@ -928,6 +952,17 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
   private checkToolSuppressionMarker(payload: unknown): void {
     const rec = this.parseToolPayloadObject(payload)
     if (!rec) return
+
+    // A tool asking for confirmation (e.g. delete) means the agent's own question is the
+    // answer the user must see. Discard any card a prior lookup step (e.g. `list` to resolve
+    // a uuid) pre-saved, and ignore suppression for the rest of this turn.
+    if (rec.status === 'needs_confirmation') {
+      this.confirmationPending = true
+      this.suppressFinalAgentMessage = false
+      this.pendingAgentSavedMessages = []
+      return
+    }
+    if (this.confirmationPending) return
 
     if (rec.__suppress_agent_response === true && !this.suppressFinalAgentMessage) {
       this.suppressFinalAgentMessage = true
@@ -1461,11 +1496,12 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       '[chat-agent] surfacing tool-pre-saved message(s) (suppressed agent text)',
     )
 
-    // Every action's card must reach the user: earlier cards go out as live
-    // bot_message events, and the last one is the turn's `done` event.
+    // Every action's card must reach the user as a `done` event. Earlier cards are
+    // emitted directly; the last one is delivered via the done thinkCallback below
+    // (which also carries the turn's aggregate metadata).
     for (const m of presaved.slice(0, -1)) {
       sseBroker.emit(this.userId, {
-        type: 'bot_message',
+        type: 'done',
         message: mapRawChatToResponse(m),
       })
     }

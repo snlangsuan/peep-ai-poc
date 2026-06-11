@@ -151,7 +151,7 @@ export async function pushBotScheduleListMessage(
         content,
         created_at: createdAt,
       })
-      sseBroker.emit(userId, { type: 'bot_message', message })
+      sseBroker.emit(userId, { type: 'done', message })
     }
     logger.info(
       { userId, chatId: id, scheduleCount: items.length, emitSSE },

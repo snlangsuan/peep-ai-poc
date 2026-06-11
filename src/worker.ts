@@ -17,6 +17,7 @@ import { CheckSchedulesModule } from '#/worker/schedule/modules/check-schedules.
 import { ExtractMemoriesModule } from '#/worker/schedule/modules/extract-memories.module'
 import { GenerateHoroscopeModule } from '#/worker/schedule/modules/generate-horoscope.module'
 import { SendMoodToAllModule } from '#/worker/schedule/modules/send-mood.module'
+import { SendDailyBriefingModule } from '#/worker/schedule/modules/send-daily-briefing.module'
 import { ScheduleWorker } from '#/worker/schedule/schedule-worker'
 
 import type { TChatAgentThinkingStatus } from '#/core/chat/chat.type'
@@ -164,6 +165,7 @@ export function startScheduleWorker() {
   scheduleWorker
     .addModule(new CheckSchedulesModule())
     .addModule(new SendMoodToAllModule())
+    .addModule(new SendDailyBriefingModule())
     .addModule(new ExtractMemoriesModule())
     .addModule(new GenerateHoroscopeModule())
 

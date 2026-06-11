@@ -6,7 +6,7 @@ import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 export class SummaryTool implements IChatTool {
   readonly name = 'summary_tool'
   readonly description =
-    'สรุปภาพรวมข้อมูลของผู้ใช้ในเดือนปัจจุบัน (todo, นัดหมาย, ค่าใช้จ่าย, อารมณ์) แล้วแสดงเป็นการ์ดสรุปภาพรวมประจำเดือน'
+    'สรุป "ภาพรวมรวมทุกด้าน" ของผู้ใช้ในเดือนปัจจุบัน (todo + นัดหมาย + ค่าใช้จ่าย + อารมณ์ พร้อมกันในการ์ดเดียว). ใช้เฉพาะเมื่อผู้ใช้ขอสรุปภาพรวมทั้งหมด/หลายด้านรวมกัน เช่น "สรุปเดือนนี้", "ภาพรวมเดือนนี้". ห้ามใช้กับการสรุปเฉพาะด้านเดียว เช่น "สรุปค่าใช้จ่าย" (ใช้ manage_expenses), "สรุปงาน" (ใช้ manage_todos)'
   readonly parameters = {
     type: 'OBJECT',
     properties: {

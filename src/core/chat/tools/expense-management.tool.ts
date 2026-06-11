@@ -1,23 +1,32 @@
 import { getLocalTime } from '#/common/utils/datetime.util'
 import { ExpenseService } from '#/features/expenses/v1/expense.service'
 import { ExpenseRepository } from '#/features/expenses/v1/expense.repository'
-import { pushBotExpenseCreatedMessage, pushBotExpenseListMessage } from '#/features/chats/v1/expense-notify.helper'
+import {
+  pushBotExpenseCreatedMessage,
+  pushBotExpenseListMessage,
+  pushBotExpenseSummaryMessage,
+} from '#/features/chats/v1/expense-notify.helper'
 
 import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
 
 export class ExpenseManagementTool implements IChatTool {
   readonly name = 'manage_expenses'
-  readonly description = 'จัดการบันทึกค่าใช้จ่าย (Expenses) ของผู้ใช้ ทั้งการสร้าง/บันทึกรายได้-รายจ่าย, เรียกดู, แก้ไขข้อมูล, ลบ และแสดงรายงานตามช่วงเวลา (เช่น ค่าใช้จ่ายของวันนี้, เมื่อวาน หรือระบุวันที่)'
+  readonly description = 'จัดการบันทึกค่าใช้จ่าย (Expenses) ของผู้ใช้ ทั้งการสร้าง/บันทึกรายได้-รายจ่าย, เรียกดู, แก้ไขข้อมูล, ลบ, แสดงรายการตามช่วงเวลา และ "สรุปค่าใช้จ่ายแยกตามหมวดหมู่" (เช่น "สรุปค่าใช้จ่ายเดือนนี้", "ขอรายละเอียดค่าใช้จ่าย"). ใช้ tool นี้เสมอเมื่อผู้ใช้พูดถึงค่าใช้จ่าย/รายรับ/รายจ่าย แม้จะเป็นการ "สรุป" ก็ตาม'
   readonly parameters = {
     type: 'OBJECT',
     properties: {
       action: {
         type: 'STRING',
-        description: 'การดำเนินการที่ต้องการทำ: "create" (บันทึกรายการใหม่), "get" (เรียกดูรายตัว), "list" (แสดงรายงาน/รายการทั้งหมดตามช่วงเวลา), "update" (แก้ไข), "delete" (ลบ)',
+        description: 'การดำเนินการที่ต้องการทำ: "create" (บันทึกรายการใหม่), "get" (เรียกดูรายตัว), "list" (แสดงรายการทีละรายการตามช่วงเวลา), "summary" (สรุปยอดรวมแยกตามหมวดหมู่ตามช่วงเวลา), "update" (แก้ไข), "delete" (ลบ)',
       },
       uuid: {
         type: 'STRING',
         description: 'ไอดีเฉพาะของรายการค่าใช้จ่าย (จำเป็นต้องส่งเมื่อ action เป็น "get", "update", "delete")',
+      },
+      confirm: {
+        type: 'BOOLEAN',
+        description:
+          'ใช้กับ action "delete" เท่านั้น: ตั้งเป็น true เมื่อผู้ใช้ "ยืนยันแล้ว" ว่าจะลบรายการ. โดยปกติไม่ต้องส่ง (หรือ false) — ระบบจะคืน needs_confirmation พร้อมรายละเอียดรายการให้ถามผู้ใช้ก่อน เมื่อผู้ใช้ยืนยันค่อยเรียก delete ซ้ำพร้อม confirm=true',
       },
       expenses: {
         type: 'ARRAY',
@@ -73,6 +82,11 @@ export class ExpenseManagementTool implements IChatTool {
           limit: { type: 'NUMBER', description: 'จำนวนรายการที่แสดงต่อหน้า (เริ่มต้น 25)' },
         },
       },
+      lookup: {
+        type: 'BOOLEAN',
+        description:
+          'ใช้กับ action "list" เท่านั้น: ตั้งเป็น true เมื่อ list เพื่อ "ค้นหา uuid ภายใน" สำหรับนำไปลบ/แก้ไข (ไม่ใช่เพื่อแสดงให้ผู้ใช้ดู) — ระบบจะไม่ส่งการ์ดรายการให้ผู้ใช้ ป้องกันการขึ้นการ์ดโดยไม่ตั้งใจ',
+      },
     },
     required: ['action'],
   }
@@ -85,8 +99,9 @@ export class ExpenseManagementTool implements IChatTool {
 
   async execute(
     args: {
-      action: 'create' | 'get' | 'list' | 'update' | 'delete'
+      action: 'create' | 'get' | 'list' | 'summary' | 'update' | 'delete'
       uuid?: string
+      confirm?: boolean
       expenses?: Array<{
         subject: string
         amount: number
@@ -104,11 +119,26 @@ export class ExpenseManagementTool implements IChatTool {
       date?: string
       time?: string
       filter?: { startDate?: string; endDate?: string; page?: number; limit?: number }
+      lookup?: boolean
     },
     context: IChatContext,
   ): Promise<string> {
-    const { action } = args
+    let action = args.action
     const userId = context.userId
+
+    // Deterministic guard: the model sometimes picks 'list' for a clear summary request
+    // ("สรุป.../ภาพรวม/รายละเอียดค่าใช้จ่าย"). Honor the user's actual intent.
+    if (action === 'list' && this.isSummaryIntent(context.message)) {
+      action = 'summary'
+    }
+
+    // Anti-leakage: in multi-turn chats the model often re-uses the date range from a
+    // previous turn (e.g. "3 เดือน") even when the new message specifies no period. If the
+    // CURRENT message has no time expression, drop any inherited date filter and let the
+    // handler apply its default.
+    if ((action === 'list' || action === 'summary') && args.filter && !this.messageSpecifiesPeriod(context.message)) {
+      args.filter = { ...args.filter, startDate: undefined, endDate: undefined }
+    }
 
     try {
       switch (action) {
@@ -117,11 +147,13 @@ export class ExpenseManagementTool implements IChatTool {
         case 'get':
           return await this.handleGet(userId, args.uuid)
         case 'list':
-          return await this.handleList(userId, args.filter)
+          return await this.handleList(userId, args.filter, args.lookup)
+        case 'summary':
+          return await this.handleSummary(userId, args.filter)
         case 'update':
           return await this.handleUpdate(userId, args)
         case 'delete':
-          return await this.handleDelete(userId, args.uuid)
+          return await this.handleDelete(userId, args.uuid, args.confirm)
         default:
           return JSON.stringify({ error: `Unsupported action: "${action}"` })
       }
@@ -202,12 +234,15 @@ export class ExpenseManagementTool implements IChatTool {
   private async handleList(
     userId: string,
     filter?: { startDate?: string; endDate?: string; page?: number; limit?: number },
+    lookup?: boolean,
   ): Promise<string> {
-    // No date specified at all → default to today only.
+    // No date specified at all → default to this month-to-date (a generic "show my
+    // expenses" should surface recent items, not just today which is often empty).
     let startDate = filter?.startDate
     let endDate = filter?.endDate
     if (!startDate && !endDate) {
-      startDate = endDate = getLocalTime().format('YYYY-MM-DD')
+      startDate = getLocalTime().startOf('month').format('YYYY-MM-DD')
+      endDate = getLocalTime().format('YYYY-MM-DD')
     }
 
     const apiFilter = {
@@ -224,11 +259,14 @@ export class ExpenseManagementTool implements IChatTool {
     // If the filter describes a bounded period of <= 31 days and we have items, push
     // a structured expense card to the user (text + expense card) and tell the agent
     // to skip its own done event so the user sees one cohesive message.
-    const shouldPushCard =
-      result.items.length > 0 &&
-      !!startDate &&
-      !!endDate &&
-      this.daysBetweenInclusive(startDate, endDate) <= 31
+    // In lookup mode the agent is only resolving a uuid (e.g. before delete/update),
+    // so don't push a list card or suppress the agent's response.
+    const withinCardWindow = !!startDate && !!endDate && this.daysBetweenInclusive(startDate, endDate) <= 31
+    const shouldPushCard = !lookup && result.items.length > 0 && withinCardWindow
+
+    // Safety net: a wide range can't render an itemized card — the user almost certainly
+    // wanted a summary. Nudge the agent to re-call with action='summary'.
+    const suggestSummary = !lookup && result.items.length > 0 && !withinCardWindow
 
     let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
     if (shouldPushCard) {
@@ -261,6 +299,110 @@ export class ExpenseManagementTool implements IChatTool {
         start: startDate || 'all',
         end: endDate || 'all',
       },
+      ...(suggestSummary
+        ? {
+            __hint_use_summary:
+              'ช่วงเวลากว้างเกิน 31 วัน ระบบไม่แสดงการ์ดรายการแยกชิ้น — ถ้าผู้ใช้ต้องการดูค่าใช้จ่ายในช่วงนี้ ให้เรียก action="summary" ด้วยช่วงเวลาเดียวกันเพื่อแสดงสรุปยอดแยกตามหมวดหมู่',
+          }
+        : {}),
+      ...(savedForAgentDone
+        ? {
+            __suppress_agent_response: true,
+            __agent_saved_message: savedForAgentDone,
+          }
+        : {}),
+    })
+  }
+
+  /** True when the user's message clearly asks for a summary rather than an itemized list. */
+  private isSummaryIntent(message?: string): boolean {
+    if (!message) return false
+    const keywords = ['สรุป', 'ภาพรวม', 'รวมยอด', 'รายละเอียด', 'ใช้เงินไปกับ', 'ใช้จ่ายไปกับ']
+    return keywords.some((k) => message.includes(k))
+  }
+
+  /** True when the message itself names a time period (so a date filter is intended this turn). */
+  private messageSpecifiesPeriod(message?: string): boolean {
+    if (!message) return false
+    return /วันนี้|เมื่อวาน|พรุ่งนี้|มะรืน|สัปดาห์|อาทิตย์|เดือน|ไตรมาส|ปีนี้|ปีที่แล้ว|ทั้งปี|ย้อนหลัง|ที่ผ่านมา|ที่แล้ว|ตั้งแต่|ช่วง|มกรา|กุมภา|มีนา|เมษา|พฤษภา|มิถุนา|กรกฎา|สิงหา|กันยา|ตุลา|พฤศจิ|ธันวา|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}|\d+\s*(วัน|เดือน|ปี|สัปดาห์|อาทิตย์)/.test(
+      message,
+    )
+  }
+
+  /**
+   * Summarizes expenses grouped by category over a period (card type `expense_summary`).
+   * - No date given → defaults to current month-to-date.
+   * - Period is capped at 1 year; longer ranges are rejected with a message.
+   * - No expenses → returns a text-only result so the agent tells the user the period is empty.
+   */
+  private async handleSummary(
+    userId: string,
+    filter?: { startDate?: string; endDate?: string },
+  ): Promise<string> {
+    // Default to today when the user didn't specify a period (a bare "สรุปค่าใช้จ่าย"
+    // means today's spending, not an inherited multi-month range).
+    let startDate = filter?.startDate
+    let endDate = filter?.endDate
+    if (!startDate && !endDate) {
+      startDate = endDate = getLocalTime().format('YYYY-MM-DD')
+    } else if (startDate && !endDate) {
+      endDate = startDate
+    } else if (!startDate && endDate) {
+      startDate = endDate
+    }
+
+    // Cap the summary window at 1 year.
+    if (this.daysBetweenInclusive(startDate!, endDate!) > 366) {
+      return JSON.stringify({
+        status: 'invalid_range',
+        period: { start: startDate, end: endDate },
+        message: 'ช่วงเวลาที่สรุปได้สูงสุดไม่เกิน 1 ปี แจ้งผู้ใช้ให้ระบุช่วงเวลาที่สั้นลง (ไม่เกิน 1 ปี)',
+      })
+    }
+
+    // Fetch ALL expenses in the period (high limit) so totals are accurate, not page-limited.
+    const result = await this.service.getExpenses(userId, {
+      start_date: startDate,
+      end_date: endDate,
+      page: 1,
+      limit: 100000,
+    })
+
+    const period = { start: startDate!, end: endDate! }
+
+    if (result.items.length === 0) {
+      return JSON.stringify({
+        status: 'empty',
+        period,
+        message: `ไม่มีรายการค่าใช้จ่ายในช่วง ${period.start} ถึง ${period.end} — แจ้งผู้ใช้ว่าไม่มีรายการในช่วงเวลานี้`,
+      })
+    }
+
+    const total = result.items.reduce((acc, e) => acc + (e.amount || 0), 0)
+    const summary: Record<string, number> = {}
+    for (const e of result.items) {
+      summary[e.category] = (summary[e.category] ?? 0) + (e.amount || 0)
+    }
+
+    let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
+    const saved = await pushBotExpenseSummaryMessage(
+      userId,
+      { expenses: result.items, startDate: startDate!, endDate: endDate! },
+      { emitSSE: false },
+    )
+    if (saved) {
+      savedForAgentDone = {
+        id: saved.id,
+        content: saved.content,
+        createdAt: saved.createdAt.toISOString(),
+      }
+    }
+
+    return JSON.stringify({
+      total,
+      summary,
+      item_count: result.items.length,
+      period,
       ...(savedForAgentDone
         ? {
             __suppress_agent_response: true,
@@ -327,11 +469,30 @@ export class ExpenseManagementTool implements IChatTool {
     })
   }
 
-  private async handleDelete(userId: string, uuid?: string): Promise<string> {
+  private async handleDelete(userId: string, uuid?: string, confirm?: boolean): Promise<string> {
     if (!uuid) {
       return JSON.stringify({ error: 'Missing required field: "uuid" is required for delete action.' })
     }
+
+    // Fetch first so we can show the user exactly what will be deleted (throws if not found / not theirs).
+    const target = await this.service.getExpense(userId, uuid)
+
+    // Unless the user has already confirmed, do NOT delete — ask for confirmation first.
+    if (!confirm) {
+      return JSON.stringify({
+        status: 'needs_confirmation',
+        reason: 'delete',
+        action: 'delete',
+        target: { uuid, subject: target.subject, amount: target.amount, date: target.date },
+        message:
+          'ยืนยันการลบ: แจ้งผู้ใช้ว่ากำลังจะลบรายการค่าใช้จ่ายนี้ (ระบุชื่อ/จำนวนเงิน/วันที่จาก target) แล้วถามว่าต้องการลบจริงไหม ถ้าผู้ใช้ยืนยันให้เรียก action "delete" ซ้ำด้วย uuid เดิมพร้อม confirm=true',
+      })
+    }
+
     await this.service.delete(userId, uuid)
-    return JSON.stringify({ message: `ลบรายการค่าใช้จ่ายเรียบร้อยแล้วจ้า!` })
+    return JSON.stringify({
+      status: 'success',
+      message: `ลบรายการค่าใช้จ่าย "${target.subject}" เรียบร้อยแล้วจ้า!`,
+    })
   }
 }

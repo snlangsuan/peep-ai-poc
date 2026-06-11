@@ -119,6 +119,15 @@ const baseChatMessageExpenseContentSchema = z.object({
   item_count: z.number().optional(),
 })
 
+const baseChatMessageExpenseSummaryContentSchema = z.object({
+  type: z.literal('expense_summary'),
+  total: z.number(),
+  start_date: z.string(),
+  end_date: z.string(),
+  // category name -> summed amount for that category within the period.
+  summary: z.record(z.string(), z.number()),
+})
+
 const baseChatMessageTodoContentSchema = z.object({
   type: z.literal('todo'),
   title: z.string(),
@@ -193,6 +202,7 @@ export const chatMessageResponseContentSchema = z.discriminatedUnion('type', [
   baseChatMessageScheduleContentSchema,
   baseChatMessageScheduleNotifyContentSchema,
   baseChatMessageExpenseContentSchema,
+  baseChatMessageExpenseSummaryContentSchema,
   baseChatMessageTodoContentSchema,
   baseChatMessageFortuneContentSchema,
   baseChatMessageMonthlySummaryContentSchema,
@@ -276,6 +286,24 @@ export const chatSseEventSchema = z.discriminatedUnion('type', [
     bot_message_id: z.string().optional(),
   }),
   z.object({ type: z.literal('session_cleared'), session_id: z.string() }),
+  // Transient toast notification — shown to the user but NOT persisted to chat history.
+  z.object({
+    type: z.literal('toast'),
+    message: z.string(),
+    // Optional tappable quick replies; tapping a "message" action sends `text` as a user message.
+    quick_reply: z
+      .array(
+        z.object({
+          type: z.literal('action'),
+          action: z.object({
+            type: z.literal('message'),
+            label: z.string(),
+            text: z.string(),
+          }),
+        }),
+      )
+      .optional(),
+  }),
 ])
 
 export const chatActionPayloadSchema = z.object({
