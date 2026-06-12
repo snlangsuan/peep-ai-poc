@@ -109,23 +109,70 @@ const baseChatMessageExpenseContentSchema = z.object({
       uuid: z.string(),
       subject: z.string(),
       amount: z.number(),
-      category: z.enum(['food&drink', 'transport', 'shopping', 'bills', 'work', 'other']),
+      // Direction of the record. Optional + default keeps older stored cards parseable.
+      kind: z.enum(['income', 'expense']).optional().default('expense'),
+      category: z.enum([
+        'food&drink',
+        'transport',
+        'shopping',
+        'bills',
+        'work',
+        'other',
+        'salary',
+        'bonus',
+        'sale',
+        'transfer-in',
+        'refund',
+        'other-income',
+      ]),
       date: z.string(),
       created_at: z.string(),
     }),
   ),
+  // Net total (income − expense) of the listed records. Kept named `total` for backward compat.
   total: z.number(),
+  // Direction-split totals; optional so older stored cards stay parseable.
+  income_total: z.number().optional(),
+  expense_total: z.number().optional(),
   // Actual total number of items (items[] may be truncated for display).
   item_count: z.number().optional(),
 })
 
 const baseChatMessageExpenseSummaryContentSchema = z.object({
   type: z.literal('expense_summary'),
+  // Net total (income − expense) for the period. Kept named `total` for backward compat.
   total: z.number(),
+  income_total: z.number().optional(),
+  expense_total: z.number().optional(),
+  net_total: z.number().optional(),
   start_date: z.string(),
   end_date: z.string(),
-  // category name -> summed amount for that category within the period.
+  // expense category name -> summed amount for that category within the period.
   summary: z.record(z.string(), z.number()),
+  // income category name -> summed amount within the period.
+  income_summary: z.record(z.string(), z.number()).optional(),
+})
+
+const baseChatMessageBalanceContentSchema = z.object({
+  type: z.literal('balance'),
+  created_at: z.string(),
+  // The month this balance describes, 'YYYY-MM'.
+  month: z.string(),
+  // Money carried in from the previous month (or the user-set opening balance).
+  opening_balance: z.number(),
+  income_total: z.number(),
+  expense_total: z.number(),
+  // income_total − expense_total for the month.
+  net_total: z.number(),
+  // opening_balance + net_total. This flows into next month's opening_balance.
+  closing_balance: z.number(),
+  // True when the opening balance was set manually for this month rather than carried over.
+  opening_is_override: z.boolean().optional(),
+  currency: z.string().optional().default('THB'),
+  // Optional monthly spending cap (budget layer).
+  budget: z.number().nullable().optional(),
+  // expense_total / budget as a 0..1+ ratio; present only when a budget is set.
+  budget_used_ratio: z.number().nullable().optional(),
 })
 
 const baseChatMessageTodoContentSchema = z.object({
@@ -187,6 +234,12 @@ const baseChatMessageMonthlySummaryContentSchema = z.object({
     schedule_count: z.number(),
     expense_count: z.number(),
     expense_total: z.number(),
+    // Accounting fields; optional so older stored summary cards stay parseable.
+    income_total: z.number().optional(),
+    net_total: z.number().optional(),
+    opening_balance: z.number().optional(),
+    closing_balance: z.number().optional(),
+    budget: z.number().nullable().optional(),
     mood: z.array(z.object({ id: z.string(), count: z.number() })),
     highlight: z.array(z.string()),
     recommend: z.string(),
@@ -203,6 +256,7 @@ export const chatMessageResponseContentSchema = z.discriminatedUnion('type', [
   baseChatMessageScheduleNotifyContentSchema,
   baseChatMessageExpenseContentSchema,
   baseChatMessageExpenseSummaryContentSchema,
+  baseChatMessageBalanceContentSchema,
   baseChatMessageTodoContentSchema,
   baseChatMessageFortuneContentSchema,
   baseChatMessageMonthlySummaryContentSchema,
@@ -328,6 +382,3 @@ export const chatFeedbackPayloadSchema = z.object({
   messageId: z.string(),
   feedback: z.enum(['like', 'dislike']).nullable(),
 })
-
-
-

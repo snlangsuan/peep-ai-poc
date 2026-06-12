@@ -19,6 +19,7 @@ describe('ExpenseService Unit Tests', () => {
         created_by: 'user-uuid-1',
         subject: 'Office Supplies',
         amount: 1500,
+        type: 'expense',
         category: 'other',
         currency: 'THB',
         location: 'Store A',
@@ -69,6 +70,7 @@ describe('ExpenseService Unit Tests', () => {
         {
           subject: 'Coffee',
           amount: 120,
+          type: 'expense',
           category: 'other',
           currency: 'THB',
           date: '2026-05-23',
@@ -93,6 +95,7 @@ describe('ExpenseService Unit Tests', () => {
         {
           subject: 'Coffee',
           amount: 120,
+          type: 'expense',
           category: 'other',
           currency: 'THB',
           date: '2026-05-23',
@@ -100,6 +103,7 @@ describe('ExpenseService Unit Tests', () => {
         {
           subject: 'Lunch',
           amount: 350,
+          type: 'expense',
           category: 'other',
           currency: 'THB',
           date: '2026-05-23',

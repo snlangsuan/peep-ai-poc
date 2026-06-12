@@ -6,7 +6,8 @@ import type {
   expenseFilterPayloadSchema,
   expenseItemResponseSchema,
   expenseParamPayloadSchema,
-  expenseCategorySchema,
+  transactionCategorySchema,
+  expenseTypeSchema,
 } from '#/features/expenses/v1/expense.schema'
 import type { z } from 'zod'
 
@@ -18,12 +19,16 @@ export type TExpenseFilterPayload = z.infer<typeof expenseFilterPayloadSchema>
 export type TExpenseItemResponse = z.infer<typeof expenseItemResponseSchema>
 export type TExpenseParamPayload = z.infer<typeof expenseParamPayloadSchema>
 
+export type TExpenseType = z.infer<typeof expenseTypeSchema>
+export type TTransactionCategory = z.infer<typeof transactionCategorySchema>
+
 export interface IExpenseEntity {
   uuid: string
   created_by: string
   subject: string
   amount: number
-  category: z.infer<typeof expenseCategorySchema>
+  type: TExpenseType
+  category: TTransactionCategory
   currency: string
   location?: string | null
   date: string

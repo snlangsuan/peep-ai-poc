@@ -4,6 +4,7 @@ export enum ERouteTag {
   SCHEDULE = 'Schedule',
   TODO = 'Todo',
   EXPENSE = 'Expense',
+  ACCOUNT = 'Account',
   MOOD = 'Mood',
   CHAT = 'Chat',
   UID = 'Uid',

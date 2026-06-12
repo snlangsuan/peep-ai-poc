@@ -284,11 +284,23 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
 
   /**
    * Deterministic guard: `summary_tool` builds an ALL-domains monthly overview. When the user
-   * clearly asks for a single-domain summary ("สรุปค่าใช้จ่าย"), route to that domain's tool
-   * instead — the expense tool then forces action='summary' on its own.
+   * clearly asks for a single-domain summary ("สรุปค่าใช้จ่าย", "สรุปบัญชี"), route to that
+   * domain's tool instead — that tool then surfaces its own card.
    */
   private redirectDomainSpecificSummary(toolName: string, message: string): string {
     if (toolName !== 'summary_tool') return toolName
+
+    // Account/balance summary takes precedence: "สรุปบัญชี/ยอดคงเหลือ" is about money on hand,
+    // not a spending breakdown.
+    const accountWords = ['บัญชี', 'คงเหลือ', 'เงินต้น', 'ยอดยกมา', 'ยกยอด', 'เหลือเงิน', 'งบประมาณ', 'budget']
+    if (accountWords.some((w) => message.includes(w)) && this.tools.some((t) => t.name === 'manage_account')) {
+      logger.info(
+        { userId: this.userId },
+        '[classifier] redirected summary_tool → manage_account (account/balance summary)',
+      )
+      return 'manage_account'
+    }
+
     const expenseWords = ['ค่าใช้จ่าย', 'รายจ่าย', 'รายรับ', 'ใช้จ่าย', 'expense', 'ค่าใช้']
     if (expenseWords.some((w) => message.includes(w)) && this.tools.some((t) => t.name === 'manage_expenses')) {
       logger.info(
@@ -1174,7 +1186,10 @@ Parameters JSON Schema: ${JSON.stringify(t.parameters)}`
       if (item?.type === 'text' && typeof item.text === 'string') {
         parts.push(item.text)
       } else if (typeof item?.type === 'string') {
-        parts.push(`[${item.type} card]`)
+        // Describe past cards as a meta note rather than a bracketed token. A token like
+        // "[balance card]" reads like a renderable placeholder and the model would sometimes
+        // echo it verbatim as its own reply; a parenthetical past-tense note never gets copied.
+        parts.push(`(เคยแสดงการ์ด ${item.type} ให้ผู้ใช้แล้ว)`)
       }
     }
     return parts.join(' ').trim()

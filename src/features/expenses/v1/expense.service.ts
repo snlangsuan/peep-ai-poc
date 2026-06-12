@@ -28,6 +28,7 @@ export class ExpenseService {
       created_by: userId,
       subject: item.subject,
       amount: item.amount,
+      type: item.type ?? 'expense',
       category: item.category,
       currency: item.currency ?? 'THB',
       location: item.location ?? null,
@@ -90,6 +91,9 @@ export class ExpenseService {
     }
     if (body.amount !== undefined) {
       fields.amount = body.amount
+    }
+    if (body.type !== undefined) {
+      fields.type = body.type
     }
     if (body.category !== undefined) {
       fields.category = body.category

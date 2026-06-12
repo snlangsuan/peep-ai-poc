@@ -46,6 +46,7 @@ export class ExpenseRepository {
         created_by: input.created_by,
         subject: input.subject,
         amount: input.amount,
+        type: input.type,
         category: input.category,
         currency: input.currency,
         location: input.location ?? null,
@@ -136,6 +137,9 @@ export class ExpenseRepository {
     if (fields.amount !== undefined) {
       updateData.amount = fields.amount
     }
+    if (fields.type !== undefined) {
+      updateData.type = fields.type
+    }
     if (fields.category !== undefined) {
       updateData.category = fields.category
     }
@@ -165,7 +169,9 @@ export class ExpenseRepository {
       created_by: data.created_by as string,
       subject: data.subject as string,
       amount: data.amount as number,
-      category: (data.category || 'Other') as any,
+      // Records created before the income/expense split default to 'expense'.
+      type: (data.type ?? 'expense') as IExpenseEntity['type'],
+      category: (data.category || 'other') as IExpenseEntity['category'],
       currency: (data.currency || 'THB') as string,
       location: (data.location ?? null) as string | null,
       date: data.date as string,

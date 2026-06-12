@@ -4,12 +4,22 @@ import { paginationFilterSchema } from '#/common/schemas/request.schema'
 import { paginationMetadataSchema } from '#/common/schemas/response.schema'
 import { dateType, timeType } from '#/common/schemas/share.schema'
 
+// Direction of a money record. Existing records (created before this field existed) are
+// treated as 'expense' on read, so historical data stays correct without a migration.
+export const expenseTypeSchema = z.enum(['income', 'expense'])
+
 export const expenseCategorySchema = z.enum(['food&drink', 'transport', 'shopping', 'bills', 'work', 'other'])
+export const incomeCategorySchema = z.enum(['salary', 'bonus', 'sale', 'transfer-in', 'refund', 'other-income'])
+
+// A transaction category may belong to either direction; the tool/service is responsible for
+// keeping `category` consistent with `type`.
+export const transactionCategorySchema = z.union([expenseCategorySchema, incomeCategorySchema])
 
 export const baseExpenseCreatePayloadItemSchema = z.object({
   subject: z.string().min(1, 'Subject is required'),
   amount: z.number().min(0, 'Amount must be non-negative'),
-  category: expenseCategorySchema,
+  type: expenseTypeSchema.default('expense'),
+  category: transactionCategorySchema,
   currency: z.string().default('THB'),
   location: z.string().optional().nullable(),
   date: dateType,
@@ -23,7 +33,8 @@ export const expenseCreatePayloadSchema = z.object({
 export const expenseUpdatePayloadSchema = z.object({
   subject: z.string().min(1, 'Subject must not be empty').optional(),
   amount: z.number().min(0, 'Amount must be non-negative').optional(),
-  category: expenseCategorySchema.optional(),
+  type: expenseTypeSchema.optional(),
+  category: transactionCategorySchema.optional(),
   currency: z.string().optional(),
   location: z.string().optional().nullable(),
   date: dateType.optional(),
@@ -35,7 +46,8 @@ export const expenseResponseSchema = z.object({
   created_by: z.string(),
   subject: z.string(),
   amount: z.number(),
-  category: expenseCategorySchema,
+  type: expenseTypeSchema,
+  category: transactionCategorySchema,
   currency: z.string(),
   location: z.string().optional().nullable(),
   date: z.string(),

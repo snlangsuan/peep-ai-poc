@@ -4,19 +4,18 @@ import { CLOUDY_PERSONA } from '#/common/constants/chat.constant'
 import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
 import { convertToLocalTime, getLocalTime, getUtcTime } from '#/common/utils/datetime.util'
+import { AccountRepository } from '#/features/account/v1/account.repository'
+import { AccountService } from '#/features/account/v1/account.service'
 
 import type { AIService } from '#/common/services/ai.service'
 import type { ExpenseRepository } from '#/features/expenses/v1/expense.repository'
 import type { IExpenseEntity } from '#/features/expenses/v1/expense.type'
-import type { IMoodEntity } from '#/features/moods/v1/mood.type'
 import type { MoodRepository } from '#/features/moods/v1/mood.repository'
+import type { IMoodEntity } from '#/features/moods/v1/mood.type'
 import type { ScheduleRepository } from '#/features/schedules/v1/schedule.repository'
 import type { TScheduleResponse } from '#/features/schedules/v1/schedule.type'
+import type { TSummaryMonthlyResponse, TSummaryMoodCount } from '#/features/summaries/v1/summary.type'
 import type { TodoRepository } from '#/features/todos/v1/todo.repository'
-import type {
-  TSummaryMonthlyResponse,
-  TSummaryMoodCount,
-} from '#/features/summaries/v1/summary.type'
 
 interface ITodoDoc {
   uuid: string
@@ -31,6 +30,7 @@ interface IAggregatedStats {
   scheduleCount: number
   expenseCount: number
   expenseTotal: number
+  incomeTotal: number
   mood: TSummaryMoodCount[]
 }
 
@@ -39,7 +39,14 @@ interface IInsightContext {
   stats: {
     todos: { total: number; completed: number; completion_rate: number; sample: string[] }
     schedules: { total: number; sample: string[] }
-    expenses: { count: number; total: number; by_category: Record<string, number>; top: Array<{ subject: string; amount: number }> }
+    expenses: {
+      count: number
+      total: number
+      income_total: number
+      net_total: number
+      by_category: Record<string, number>
+      top: Array<{ subject: string; amount: number }>
+    }
     mood: Record<string, number>
   }
 }
@@ -49,7 +56,7 @@ const MAX_TOP_EXPENSES = 5
 const DEFAULT_USERNAME = 'ปี๊บ'
 const INSIGHT_CACHE_COLLECTION = 'summary_insight_cache'
 /** Bump เมื่อ persona / TASK_INSTRUCTION / output schema เปลี่ยน เพื่อ invalidate cache เก่า */
-const INSIGHT_PROMPT_VERSION = 1
+const INSIGHT_PROMPT_VERSION = 2
 
 const TASK_INSTRUCTION = `Task: คลาวดี้กำลังสร้าง insight สรุปการใช้ชีวิตของ user ในรอบ 1 เดือน จากสถิติที่ส่งมา
 
@@ -88,12 +95,21 @@ export class SummaryService {
     const context = this.buildInsightContext(year, month, todos, schedules, expenses, moods, stats)
     const insight = await this.resolveInsight(userId, year, month, username, context)
 
+    // Accounting view for the month (opening carried over, closing flows to next month).
+    const accountService = new AccountService(new AccountRepository(), this.expenseRepo)
+    const balance = await accountService.getBalance(userId, `${year}-${String(month).padStart(2, '0')}`)
+
     return {
       todo_count: stats.todoCount,
       todo_completed: stats.todoCompleted,
       schedule_count: stats.scheduleCount,
       expense_count: stats.expenseCount,
       expense_total: stats.expenseTotal,
+      income_total: stats.incomeTotal,
+      net_total: stats.incomeTotal - stats.expenseTotal,
+      opening_balance: balance.opening_balance,
+      closing_balance: balance.closing_balance,
+      budget: balance.budget,
       mood: stats.mood,
       highlight: insight.highlight,
       recommend: insight.recommend,
@@ -181,12 +197,16 @@ export class SummaryService {
       .map(([id, count]) => ({ id, count }))
       .sort((a, b) => b.count - a.count)
 
+    const expenseRecords = expenses.filter((e) => (e.type ?? 'expense') === 'expense')
+    const incomeRecords = expenses.filter((e) => (e.type ?? 'expense') === 'income')
+
     return {
       todoCount: todos.length,
       todoCompleted: todos.filter((t) => t.completed).length,
       scheduleCount: schedules.length,
-      expenseCount: expenses.length,
-      expenseTotal: expenses.reduce((sum, e) => sum + (e.amount ?? 0), 0),
+      expenseCount: expenseRecords.length,
+      expenseTotal: expenseRecords.reduce((sum, e) => sum + (e.amount ?? 0), 0),
+      incomeTotal: incomeRecords.reduce((sum, e) => sum + (e.amount ?? 0), 0),
       mood,
     }
   }
@@ -200,11 +220,13 @@ export class SummaryService {
     moods: IMoodEntity[],
     stats: IAggregatedStats,
   ): IInsightContext {
+    // Category breakdown and "top expenses" cover spending only — income is reported separately.
+    const expenseRecords = expenses.filter((e) => (e.type ?? 'expense') === 'expense')
     const byCategory: Record<string, number> = {}
-    for (const e of expenses) {
+    for (const e of expenseRecords) {
       byCategory[e.category] = (byCategory[e.category] ?? 0) + (e.amount ?? 0)
     }
-    const topExpenses = [...expenses]
+    const topExpenses = [...expenseRecords]
       .sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0))
       .slice(0, MAX_TOP_EXPENSES)
       .map((e) => ({ subject: e.subject, amount: e.amount }))
@@ -219,15 +241,23 @@ export class SummaryService {
           total: stats.todoCount,
           completed: stats.todoCompleted,
           completion_rate: stats.todoCount > 0 ? Math.round((stats.todoCompleted / stats.todoCount) * 100) : 0,
-          sample: todos.slice(0, MAX_SAMPLE_ITEMS).map((t) => t.title).filter(Boolean),
+          sample: todos
+            .slice(0, MAX_SAMPLE_ITEMS)
+            .map((t) => t.title)
+            .filter(Boolean),
         },
         schedules: {
           total: stats.scheduleCount,
-          sample: schedules.slice(0, MAX_SAMPLE_ITEMS).map((s) => s.payload.title).filter(Boolean),
+          sample: schedules
+            .slice(0, MAX_SAMPLE_ITEMS)
+            .map((s) => s.payload.title)
+            .filter(Boolean),
         },
         expenses: {
           count: stats.expenseCount,
           total: stats.expenseTotal,
+          income_total: stats.incomeTotal,
+          net_total: stats.incomeTotal - stats.expenseTotal,
           by_category: byCategory,
           top: topExpenses,
         },
@@ -328,15 +358,12 @@ export class SummaryService {
     const fallback = this.buildFallbackInsight(username, context)
     try {
       const prompt = `ข้อมูลสรุปเดือน ${context.period}:\n${JSON.stringify(context.stats)}`
-      const response = await this.aiService.generate(
-        [{ role: 'user', parts: [{ text: prompt }] }],
-        {
-          systemInstruction: this.buildSystemInstruction(username),
-          temperature: 0.5,
-          responseMimeType: 'application/json',
-          meta: { source: 'summary', kind: 'monthly-insight' },
-        },
-      )
+      const response = await this.aiService.generate([{ role: 'user', parts: [{ text: prompt }] }], {
+        systemInstruction: this.buildSystemInstruction(username),
+        temperature: 0.5,
+        responseMimeType: 'application/json',
+        meta: { source: 'summary', kind: 'monthly-insight' },
+      })
       const text = response.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text || ''
       const parsed = JSON.parse(text) as { highlight?: unknown; recommend?: unknown }
       const highlight = Array.isArray(parsed.highlight)
@@ -360,7 +387,7 @@ export class SummaryService {
     const highlight: string[] = [
       `เดือนนี้คุณ ${username} มี todo ${stats.todos.total} รายการ เสร็จไปแล้ว ${stats.todos.completed} รายการ (${stats.todos.completion_rate}%)`,
       `มีตารางนัดหมาย ${stats.schedules.total} รายการ`,
-      `บันทึกค่าใช้จ่าย ${stats.expenses.count} รายการ รวม ${stats.expenses.total.toLocaleString()} บาท`,
+      `รายจ่าย ${stats.expenses.total.toLocaleString()} บาท รายรับ ${stats.expenses.income_total.toLocaleString()} บาท (สุทธิ ${stats.expenses.net_total.toLocaleString()} บาท)`,
       `บันทึกอารมณ์ ${totalMood} ครั้ง`,
       `ข้อมูลเหล่านี้สะท้อนภาพรวมการใช้ชีวิตของคุณ ${username} ในเดือนที่ผ่านมา`,
     ]

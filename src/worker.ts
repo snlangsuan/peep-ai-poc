@@ -9,6 +9,7 @@ import {
   createScheduleManagementSkill,
   createTodoManagementSkill,
   createExpenseManagementSkill,
+  createAccountManagementSkill,
   createFortuneTellingSkill,
   createMoodManagementSkill,
   createSummarySkill,
@@ -115,6 +116,7 @@ export function startQueueWorker() {
         .addSkill(createScheduleManagementSkill())
         .addSkill(createTodoManagementSkill())
         .addSkill(createExpenseManagementSkill())
+        .addSkill(createAccountManagementSkill())
         .addSkill(createFortuneTellingSkill())
         .addSkill(createMoodManagementSkill())
         .addSkill(createSummarySkill())

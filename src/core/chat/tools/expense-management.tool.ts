@@ -1,23 +1,74 @@
 import { getLocalTime } from '#/common/utils/datetime.util'
-import { ExpenseService } from '#/features/expenses/v1/expense.service'
-import { ExpenseRepository } from '#/features/expenses/v1/expense.repository'
 import {
   pushBotExpenseCreatedMessage,
   pushBotExpenseListMessage,
   pushBotExpenseSummaryMessage,
 } from '#/features/chats/v1/expense-notify.helper'
+import { ExpenseRepository } from '#/features/expenses/v1/expense.repository'
+import { ExpenseService } from '#/features/expenses/v1/expense.service'
 
+import type { TExpenseType, TTransactionCategory } from '#/features/expenses/v1/expense.type'
 import type { IChatContext, IChatTool } from '~/src/core/chat/chat.type'
+
+const EXPENSE_CATEGORIES = ['transport', 'food&drink', 'shopping', 'bills', 'work', 'other'] as const
+const INCOME_CATEGORIES = ['salary', 'bonus', 'sale', 'transfer-in', 'refund', 'other-income'] as const
+
+interface IDirectionSplit {
+  incomeTotal: number
+  expenseTotal: number
+  netTotal: number
+  expenseSummary: Record<string, number>
+  incomeSummary: Record<string, number>
+}
+
+/** Split a set of records by direction into totals and per-category breakdowns. */
+function splitByDirection(items: Array<{ amount: number; type?: TExpenseType; category: string }>): IDirectionSplit {
+  const split: IDirectionSplit = {
+    incomeTotal: 0,
+    expenseTotal: 0,
+    netTotal: 0,
+    expenseSummary: {},
+    incomeSummary: {},
+  }
+  for (const e of items) {
+    const amount = e.amount || 0
+    if ((e.type ?? 'expense') === 'income') {
+      split.incomeTotal += amount
+      split.incomeSummary[e.category] = (split.incomeSummary[e.category] ?? 0) + amount
+    } else {
+      split.expenseTotal += amount
+      split.expenseSummary[e.category] = (split.expenseSummary[e.category] ?? 0) + amount
+    }
+  }
+  split.netTotal = split.incomeTotal - split.expenseTotal
+  return split
+}
+
+/** Coerce a loose category string into a valid category for the given direction. */
+function normalizeCategory(raw: string, type: TExpenseType): TTransactionCategory {
+  let cat = (raw || '').toLowerCase().trim()
+  if (type === 'income') {
+    if (cat === 'wage' || cat === 'payroll' || cat === 'เงินเดือน') cat = 'salary'
+    if (cat === 'transfer' || cat === 'transfer in' || cat === 'deposit') cat = 'transfer-in'
+    if (cat === 'selling' || cat === 'sales') cat = 'sale'
+    return (INCOME_CATEGORIES as readonly string[]).includes(cat) ? (cat as TTransactionCategory) : 'other-income'
+  }
+  if (cat === 'food' || cat === 'drink' || cat === 'food & drink') cat = 'food&drink'
+  if (cat === 'travel' || cat === 'car' || cat === 'bts' || cat === 'mrt') cat = 'transport'
+  return (EXPENSE_CATEGORIES as readonly string[]).includes(cat) ? (cat as TTransactionCategory) : 'other'
+}
 
 export class ExpenseManagementTool implements IChatTool {
   readonly name = 'manage_expenses'
-  readonly description = 'จัดการบันทึกค่าใช้จ่าย (Expenses) ของผู้ใช้ ทั้งการสร้าง/บันทึกรายได้-รายจ่าย, เรียกดู, แก้ไขข้อมูล, ลบ, แสดงรายการตามช่วงเวลา และ "สรุปค่าใช้จ่ายแยกตามหมวดหมู่" (เช่น "สรุปค่าใช้จ่ายเดือนนี้", "ขอรายละเอียดค่าใช้จ่าย"). ใช้ tool นี้เสมอเมื่อผู้ใช้พูดถึงค่าใช้จ่าย/รายรับ/รายจ่าย แม้จะเป็นการ "สรุป" ก็ตาม'
+  readonly description =
+    'จัดการบันทึกค่าใช้จ่าย (Expenses) ของผู้ใช้ ทั้งการสร้าง/บันทึกรายได้-รายจ่าย, เรียกดู, แก้ไขข้อมูล, ลบ, แสดงรายการตามช่วงเวลา และ "สรุปค่าใช้จ่ายแยกตามหมวดหมู่" (เช่น "สรุปค่าใช้จ่ายเดือนนี้", "ขอรายละเอียดค่าใช้จ่าย"). ใช้ tool นี้เสมอเมื่อผู้ใช้พูดถึงค่าใช้จ่าย/รายรับ/รายจ่าย แม้จะเป็นการ "สรุป" ก็ตาม'
   readonly parameters = {
     type: 'OBJECT',
     properties: {
       action: {
         type: 'STRING',
-        description: 'การดำเนินการที่ต้องการทำ: "create" (บันทึกรายการใหม่), "get" (เรียกดูรายตัว), "list" (แสดงรายการทีละรายการตามช่วงเวลา), "summary" (สรุปยอดรวมแยกตามหมวดหมู่ตามช่วงเวลา), "update" (แก้ไข), "delete" (ลบ)',
+        description:
+          'การดำเนินการที่ต้องการทำ: "create" (บันทึกรายการใหม่), "get" (เรียกดูรายตัว), "list" (แสดงรายการทีละรายการตามช่วงเวลา), "summary" (สรุปยอดรวมแยกตามหมวดหมู่ตามช่วงเวลา), "update" (แก้ไข), "delete" (ลบ)',
       },
       uuid: {
         type: 'STRING',
@@ -30,19 +81,32 @@ export class ExpenseManagementTool implements IChatTool {
       },
       expenses: {
         type: 'ARRAY',
-        description: 'รายการค่าใช้จ่ายที่ต้องการสร้าง (ใช้คู่กับ action "create" เท่านั้น) รองรับการส่งหลายรายการพร้อมกัน',
+        description:
+          'รายการค่าใช้จ่ายที่ต้องการสร้าง (ใช้คู่กับ action "create" เท่านั้น) รองรับการส่งหลายรายการพร้อมกัน',
         items: {
           type: 'OBJECT',
           properties: {
-            subject: { type: 'STRING', description: 'หัวข้อหรือชื่อรายการค่าใช้จ่าย (เช่น ค่าข้าวมันไก่, ค่าเดินทาง)' },
-            amount: { type: 'NUMBER', description: 'จำนวนเงิน (เช่น 50, 120.50)' },
-            category: { type: 'STRING', description: 'หมวดหมู่ค่าใช้จ่าย (เช่น Food, Travel, Shopping, Bills, Other)' },
+            subject: { type: 'STRING', description: 'หัวข้อหรือชื่อรายการ (เช่น ค่าข้าวมันไก่, เงินเดือน, ขายของ)' },
+            amount: {
+              type: 'NUMBER',
+              description: 'จำนวนเงิน เป็นค่าบวกเสมอ (เช่น 50, 120.50, 20000) — ทิศทางกำหนดด้วย type',
+            },
+            type: {
+              type: 'STRING',
+              description:
+                'ทิศทางของเงิน: "expense" (รายจ่าย/เงินออก) หรือ "income" (รายรับ/เงินเข้า). ค่าเริ่มต้นเป็น "expense". ต้องระบุให้ถูกตามเจตนาผู้ใช้',
+            },
+            category: {
+              type: 'STRING',
+              description:
+                'หมวดหมู่. ถ้า type=expense ใช้: food&drink, transport, shopping, bills, work, other. ถ้า type=income ใช้: salary, bonus, sale, transfer-in, refund, other-income',
+            },
             currency: { type: 'STRING', description: 'สกุลเงิน (ค่าเริ่มต้นเป็น "THB")' },
             location: { type: 'STRING', description: 'สถานที่ที่จ่ายเงิน' },
             date: { type: 'STRING', description: 'วันที่บันทึก รูปแบบ YYYY-MM-DD (เช่น 2026-05-24)' },
             time: { type: 'STRING', description: 'เวลาที่บันทึก รูปแบบ HH:mm (เช่น 18:30)' },
           },
-          required: ['subject', 'amount', 'category', 'date'],
+          required: ['subject', 'amount', 'type', 'category', 'date'],
         },
       },
       subject: {
@@ -53,9 +117,13 @@ export class ExpenseManagementTool implements IChatTool {
         type: 'NUMBER',
         description: 'แก้ไขจำนวนเงิน (ใช้กับ action "update")',
       },
+      type: {
+        type: 'STRING',
+        description: 'แก้ไขทิศทางของเงิน: "income" หรือ "expense" (ใช้กับ action "update")',
+      },
       category: {
         type: 'STRING',
-        description: 'แก้ไขหมวดหมู่ค่าใช้จ่าย (ใช้กับ action "update")',
+        description: 'แก้ไขหมวดหมู่ (ใช้กับ action "update") — ใช้ชุดหมวดตาม type เหมือนตอน create',
       },
       currency: {
         type: 'STRING',
@@ -105,6 +173,7 @@ export class ExpenseManagementTool implements IChatTool {
       expenses?: Array<{
         subject: string
         amount: number
+        type?: string
         category: string
         currency?: string
         location?: string
@@ -113,6 +182,7 @@ export class ExpenseManagementTool implements IChatTool {
       }>
       subject?: string
       amount?: number
+      type?: string
       category?: string
       currency?: string
       location?: string
@@ -167,6 +237,7 @@ export class ExpenseManagementTool implements IChatTool {
     expenses?: Array<{
       subject: string
       amount: number
+      type?: string
       category: string
       currency?: string
       location?: string
@@ -178,16 +249,12 @@ export class ExpenseManagementTool implements IChatTool {
       return JSON.stringify({ error: 'Missing required field: "expenses" array must not be empty for create action.' })
     }
     const mappedExpenses = expenses.map((e) => {
-      const validCategories = ['transport', 'food&drink', 'shopping', 'bills', 'work', 'other']
-      let cat = e.category.toLowerCase().trim()
-      if (cat === 'food' || cat === 'drink' || cat === 'food & drink') cat = 'food&drink'
-      if (cat === 'travel' || cat === 'car' || cat === 'bts' || cat === 'mrt') cat = 'transport'
-      if (!validCategories.includes(cat)) cat = 'other'
-      
+      const type = e.type?.toLowerCase().trim() === 'income' ? 'income' : 'expense'
       return {
         subject: e.subject,
         amount: e.amount,
-        category: cat as 'transport' | 'food&drink' | 'shopping' | 'bills' | 'work' | 'other',
+        type: type as 'income' | 'expense',
+        category: normalizeCategory(e.category, type),
         currency: e.currency ?? 'THB',
         location: e.location ?? null,
         date: e.date,
@@ -253,8 +320,8 @@ export class ExpenseManagementTool implements IChatTool {
     }
     const result = await this.service.getExpenses(userId, apiFilter)
 
-    // Calculate total expense amount for the queried period
-    const sumAmount = result.items.reduce((acc, curr) => acc + (curr.amount || 0), 0)
+    // Split income vs expense for the queried period so the agent can report a real net.
+    const { incomeTotal, expenseTotal, netTotal } = splitByDirection(result.items)
 
     // If the filter describes a bounded period of <= 31 days and we have items, push
     // a structured expense card to the user (text + expense card) and tell the agent
@@ -294,7 +361,11 @@ export class ExpenseManagementTool implements IChatTool {
       page: result.metadata.page,
       limit: result.metadata.limit,
       items: result.items,
-      total_amount: sumAmount,
+      // `total_amount` keeps its legacy meaning (total spent) for backward compatibility.
+      total_amount: expenseTotal,
+      income_total: incomeTotal,
+      expense_total: expenseTotal,
+      net_total: netTotal,
       period: {
         start: startDate || 'all',
         end: endDate || 'all',
@@ -335,10 +406,7 @@ export class ExpenseManagementTool implements IChatTool {
    * - Period is capped at 1 year; longer ranges are rejected with a message.
    * - No expenses → returns a text-only result so the agent tells the user the period is empty.
    */
-  private async handleSummary(
-    userId: string,
-    filter?: { startDate?: string; endDate?: string },
-  ): Promise<string> {
+  private async handleSummary(userId: string, filter?: { startDate?: string; endDate?: string }): Promise<string> {
     // Default to today when the user didn't specify a period (a bare "สรุปค่าใช้จ่าย"
     // means today's spending, not an inherited multi-month range).
     let startDate = filter?.startDate
@@ -378,11 +446,13 @@ export class ExpenseManagementTool implements IChatTool {
       })
     }
 
-    const total = result.items.reduce((acc, e) => acc + (e.amount || 0), 0)
-    const summary: Record<string, number> = {}
-    for (const e of result.items) {
-      summary[e.category] = (summary[e.category] ?? 0) + (e.amount || 0)
-    }
+    const {
+      incomeTotal,
+      expenseTotal,
+      netTotal,
+      expenseSummary: summary,
+      incomeSummary,
+    } = splitByDirection(result.items)
 
     let savedForAgentDone: { id: string; content: unknown[]; createdAt: string } | undefined
     const saved = await pushBotExpenseSummaryMessage(
@@ -399,8 +469,13 @@ export class ExpenseManagementTool implements IChatTool {
     }
 
     return JSON.stringify({
-      total,
+      // `total` keeps its legacy meaning (total spent) for backward compatibility.
+      total: expenseTotal,
+      income_total: incomeTotal,
+      expense_total: expenseTotal,
+      net_total: netTotal,
       summary,
+      ...(Object.keys(incomeSummary).length > 0 ? { income_summary: incomeSummary } : {}),
       item_count: result.items.length,
       period,
       ...(savedForAgentDone
@@ -426,6 +501,7 @@ export class ExpenseManagementTool implements IChatTool {
       uuid?: string
       subject?: string
       amount?: number
+      type?: string
       category?: string
       currency?: string
       location?: string
@@ -433,14 +509,18 @@ export class ExpenseManagementTool implements IChatTool {
       time?: string
     },
   ): Promise<string> {
-    const { uuid, subject, amount, category, currency, location, date, time } = args
+    const { uuid, subject, amount, currency, location, date, time } = args
     if (!uuid) {
       return JSON.stringify({ error: 'Missing required field: "uuid" is required for update action.' })
     }
+    const type = args.type ? (args.type.toLowerCase().trim() === 'income' ? 'income' : 'expense') : undefined
+    // When category is edited, normalize it against the (possibly newly-set) direction.
+    const category = args.category !== undefined ? normalizeCategory(args.category, type ?? 'expense') : undefined
     const result = await this.service.update(userId, uuid, {
       subject,
       amount,
-      category: category as any,
+      type,
+      category,
       currency,
       location,
       date,

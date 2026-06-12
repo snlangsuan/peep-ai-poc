@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 
 import { getUtcTime } from '#/common/utils/datetime.util'
+import accountGroup from '#/infrastructure/http/routes/v1/account.route'
 import chatRoute from '#/infrastructure/http/routes/v1/chat.route'
 import expensesGroup from '#/infrastructure/http/routes/v1/expenses.route'
 import horoscopesGroup from '#/infrastructure/http/routes/v1/horoscopes.route'
@@ -24,6 +25,7 @@ v1Route.route('/users', usersGroup)
 v1Route.route('/schedules', schedulesGroup)
 v1Route.route('/todos', todosGroup)
 v1Route.route('/expenses', expensesGroup)
+v1Route.route('/account', accountGroup)
 v1Route.route('/moods', moodsGroup)
 v1Route.route('/horoscopes', horoscopesGroup)
 v1Route.route('/chats', chatRoute)

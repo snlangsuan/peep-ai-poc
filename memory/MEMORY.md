@@ -1,0 +1,1 @@
+- [Accounting feature decisions](accounting-feature-decisions.md) — income/expense direction, computed-on-read balances, deferred caching/multi-currency

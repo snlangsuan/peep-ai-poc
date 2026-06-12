@@ -1,6 +1,7 @@
 export { createScheduleManagementSkill } from './schedule_management'
 export { createTodoManagementSkill } from './todo_management'
 export { createExpenseManagementSkill } from './expense_management'
+export { createAccountManagementSkill } from './account_management'
 export { createWebSearchSkill } from './web_search'
 export { createFortuneTellingSkill } from './fortune_telling'
 export { createMoodManagementSkill } from './mood_management'
