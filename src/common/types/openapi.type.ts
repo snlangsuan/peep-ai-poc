@@ -11,4 +11,5 @@ export enum ERouteTag {
   SUMMARY = 'Summary',
   PARSER = 'Parser',
   HOROSCOPE = 'Horoscope',
+  IMAGE_INSIGHT = 'Image Insight',
 }

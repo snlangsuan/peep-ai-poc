@@ -5,6 +5,7 @@ import accountGroup from '#/infrastructure/http/routes/v1/account.route'
 import chatRoute from '#/infrastructure/http/routes/v1/chat.route'
 import expensesGroup from '#/infrastructure/http/routes/v1/expenses.route'
 import horoscopesGroup from '#/infrastructure/http/routes/v1/horoscopes.route'
+import imagesGroup from '#/infrastructure/http/routes/v1/images.route'
 import moodsGroup from '#/infrastructure/http/routes/v1/moods.route'
 import parserGroup from '#/infrastructure/http/routes/v1/parser.route'
 import schedulesGroup from '#/infrastructure/http/routes/v1/schedules.route'
@@ -28,6 +29,7 @@ v1Route.route('/expenses', expensesGroup)
 v1Route.route('/account', accountGroup)
 v1Route.route('/moods', moodsGroup)
 v1Route.route('/horoscopes', horoscopesGroup)
+v1Route.route('/images', imagesGroup)
 v1Route.route('/chats', chatRoute)
 v1Route.route('/summaries', summariesGroup)
 v1Route.route('/parser', parserGroup)

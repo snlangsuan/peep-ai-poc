@@ -15,6 +15,7 @@ import {
   createSummarySkill,
 } from '#/core/chat/skills'
 import { CheckSchedulesModule } from '#/worker/schedule/modules/check-schedules.module'
+import { CleanupImagesModule } from '#/worker/schedule/modules/cleanup-images.module'
 import { ExtractMemoriesModule } from '#/worker/schedule/modules/extract-memories.module'
 import { GenerateHoroscopeModule } from '#/worker/schedule/modules/generate-horoscope.module'
 import { SendMoodToAllModule } from '#/worker/schedule/modules/send-mood.module'
@@ -166,6 +167,7 @@ export function startScheduleWorker() {
   scheduleWorker = new ScheduleWorker()
   scheduleWorker
     .addModule(new CheckSchedulesModule())
+    .addModule(new CleanupImagesModule())
     .addModule(new SendMoodToAllModule())
     .addModule(new SendDailyBriefingModule())
     .addModule(new ExtractMemoriesModule())

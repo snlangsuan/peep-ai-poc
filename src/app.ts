@@ -21,6 +21,16 @@ app.use(async (c, next) => {
 })
 
 app.use(requestId())
+
+// The image proxy must be embeddable cross-origin (e.g. <img> from another origin).
+// secureHeaders() defaults Cross-Origin-Resource-Policy to "same-origin" and writes
+// it AFTER the handler runs, so we override it from an OUTER middleware (registered
+// before secureHeaders) whose post-response phase runs after secureHeaders'.
+app.use('/poc/api/v1/images/file/*', async (c, next) => {
+  await next()
+  c.res.headers.set('Cross-Origin-Resource-Policy', 'cross-origin')
+})
+
 app.use(secureHeaders())
 app.use(
   '/poc/api/*',

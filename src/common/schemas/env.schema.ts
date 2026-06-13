@@ -22,6 +22,8 @@ export const envSchema = z.object({
   GOOGLE_GEMINI_CHAT_MODEL: z.string().default('gemini-3.1-flash-lite'),
   GOOGLE_GEMINI_EXTRACT_MODEL: z.string().default('gemini-2.5-flash-lite'),
   FIREBASE_DATABASE_URL: z.url().optional(),
+  // Cloud Storage bucket for uploaded images. Defaults to `<projectId>.appspot.com`.
+  FIREBASE_STORAGE_BUCKET: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_BASE_URL: z.string().optional(),
   OPENAI_CHAT_MODEL: z.string().default('gpt-4o-mini'),
