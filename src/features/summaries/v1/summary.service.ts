@@ -3,11 +3,13 @@ import { createHash } from 'node:crypto'
 import { CLOUDY_PERSONA } from '#/common/constants/chat.constant'
 import { db } from '#/common/libs/firebase.lib'
 import { logger } from '#/common/libs/logger.lib'
-import { convertToLocalTime, getLocalTime, getUtcTime } from '#/common/utils/datetime.util'
+import { convertToLocalTime, getUtcTime } from '#/common/utils/datetime.util'
 import { AccountRepository } from '#/features/account/v1/account.repository'
 import { AccountService } from '#/features/account/v1/account.service'
+import { resolvePeriod } from '#/features/summaries/v1/summary.period'
 
 import type { AIService } from '#/common/services/ai.service'
+import type { IPeriodInput, IResolvedPeriod } from '#/features/summaries/v1/summary.period'
 import type { ExpenseRepository } from '#/features/expenses/v1/expense.repository'
 import type { IExpenseEntity } from '#/features/expenses/v1/expense.type'
 import type { MoodRepository } from '#/features/moods/v1/mood.repository'
@@ -58,7 +60,7 @@ const INSIGHT_CACHE_COLLECTION = 'summary_insight_cache'
 /** Bump เมื่อ persona / TASK_INSTRUCTION / output schema เปลี่ยน เพื่อ invalidate cache เก่า */
 const INSIGHT_PROMPT_VERSION = 2
 
-const TASK_INSTRUCTION = `Task: คลาวดี้กำลังสร้าง insight สรุปการใช้ชีวิตของ user ในรอบ 1 เดือน จากสถิติที่ส่งมา
+const TASK_INSTRUCTION = `Task: คลาวดี้กำลังสร้าง insight สรุปการใช้ชีวิตของ user ในช่วงเวลาที่กำหนด จากสถิติที่ส่งมา
 
 Output rules:
 - ห้ามใช้ markdown ห้ามขึ้นต้นด้วย bullet หรือเลขลำดับใน string
@@ -77,29 +79,39 @@ export class SummaryService {
     private readonly aiService: AIService,
   ) {}
 
+  /** Backward-compatible monthly summary — delegates to the generic period path. */
   async getMonthly(userId: string, year: number, month: number): Promise<TSummaryMonthlyResponse> {
-    const monthStart = getLocalTime(`${year}-${String(month).padStart(2, '0')}-01`).startOf('month')
-    const monthEnd = monthStart.endOf('month')
-    const startDate = monthStart.format('YYYY-MM-DD')
-    const endDate = monthEnd.format('YYYY-MM-DD')
+    const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
+    const monthEnd = getUtcTime(monthStart).endOf('month').format('YYYY-MM-DD')
+    return this.getByPeriod(userId, { start_date: monthStart, end_date: monthEnd })
+  }
+
+  /**
+   * Aggregates todos, schedules, expenses and moods over a resolved period and
+   * produces the AI insight. Accounting carry-over (opening/closing/budget) is
+   * only filled for a full calendar month; other periods report period net only.
+   */
+  async getByPeriod(userId: string, input: IPeriodInput): Promise<TSummaryMonthlyResponse> {
+    const period = resolvePeriod(input)
+    const { startDate, endDate } = period
 
     const [username, todos, schedules, expenses, moods] = await Promise.all([
       this.loadUsername(userId),
-      this.fetchTodosInMonth(userId, year, month),
+      this.fetchTodosInRange(userId, startDate, endDate),
       this.fetchSchedules(userId, startDate, endDate),
       this.fetchExpenses(userId, startDate, endDate),
       this.fetchMoods(userId, startDate, endDate),
     ])
 
     const stats = this.aggregate(todos, schedules, expenses, moods)
-    const context = this.buildInsightContext(year, month, todos, schedules, expenses, moods, stats)
-    const insight = await this.resolveInsight(userId, year, month, username, context)
-
-    // Accounting view for the month (opening carried over, closing flows to next month).
-    const accountService = new AccountService(new AccountRepository(), this.expenseRepo)
-    const balance = await accountService.getBalance(userId, `${year}-${String(month).padStart(2, '0')}`)
+    const context = this.buildInsightContext(period, todos, schedules, expenses, moods, stats)
+    const insight = await this.resolveInsight(userId, period, username, context)
+    const balance = await this.resolveBalance(userId, period)
 
     return {
+      period: period.key,
+      start_date: startDate,
+      end_date: endDate,
       todo_count: stats.todoCount,
       todo_completed: stats.todoCompleted,
       schedule_count: stats.scheduleCount,
@@ -107,13 +119,26 @@ export class SummaryService {
       expense_total: stats.expenseTotal,
       income_total: stats.incomeTotal,
       net_total: stats.incomeTotal - stats.expenseTotal,
-      opening_balance: balance.opening_balance,
-      closing_balance: balance.closing_balance,
+      opening_balance: balance.opening,
+      closing_balance: balance.closing,
       budget: balance.budget,
       mood: stats.mood,
       highlight: insight.highlight,
       recommend: insight.recommend,
     }
+  }
+
+  /** Accounting carry-over only applies to a full month; null for other periods. */
+  private async resolveBalance(
+    userId: string,
+    period: IResolvedPeriod,
+  ): Promise<{ opening: number | null; closing: number | null; budget: number | null }> {
+    if (!period.isFullMonth) {
+      return { opening: null, closing: null, budget: null }
+    }
+    const accountService = new AccountService(new AccountRepository(), this.expenseRepo)
+    const balance = await accountService.getBalance(userId, `${period.year}-${String(period.month).padStart(2, '0')}`)
+    return { opening: balance.opening_balance, closing: balance.closing_balance, budget: balance.budget }
   }
 
   private async loadUsername(userId: string): Promise<string> {
@@ -131,7 +156,7 @@ export class SummaryService {
     return DEFAULT_USERNAME
   }
 
-  private async fetchTodosInMonth(userId: string, year: number, month: number): Promise<ITodoDoc[]> {
+  private async fetchTodosInRange(userId: string, startDate: string, endDate: string): Promise<ITodoDoc[]> {
     const { data } = await this.todoRepo.findByUserId(userId)
     return data
       .map((d) => ({
@@ -142,8 +167,8 @@ export class SummaryService {
       }))
       .filter((t) => {
         if (!t.created_at) return false
-        const local = convertToLocalTime(t.created_at)
-        return local.year() === year && local.month() + 1 === month
+        const localDate = convertToLocalTime(t.created_at).format('YYYY-MM-DD')
+        return localDate >= startDate && localDate <= endDate
       })
   }
 
@@ -212,8 +237,7 @@ export class SummaryService {
   }
 
   private buildInsightContext(
-    year: number,
-    month: number,
+    period: IResolvedPeriod,
     todos: ITodoDoc[],
     schedules: TScheduleResponse[],
     expenses: IExpenseEntity[],
@@ -235,7 +259,7 @@ export class SummaryService {
     for (const m of stats.mood) moodObj[m.id] = m.count
 
     return {
-      period: `${year}-${String(month).padStart(2, '0')}`,
+      period: `${period.startDate}..${period.endDate}`,
       stats: {
         todos: {
           total: stats.todoCount,
@@ -276,19 +300,18 @@ export class SummaryService {
     return createHash('sha256').update(payload).digest('hex')
   }
 
-  private cacheDocId(userId: string, year: number, month: number): string {
-    return `${userId}_${year}-${String(month).padStart(2, '0')}`
+  private cacheDocId(userId: string, period: IResolvedPeriod): string {
+    return `${userId}_${period.startDate}_${period.endDate}`
   }
 
   private async resolveInsight(
     userId: string,
-    year: number,
-    month: number,
+    period: IResolvedPeriod,
     username: string,
     context: IInsightContext,
   ): Promise<{ highlight: string[]; recommend: string }> {
     const hash = this.buildInsightHash(username, context)
-    const docId = this.cacheDocId(userId, year, month)
+    const docId = this.cacheDocId(userId, period)
 
     const cached = await this.readCachedInsight(docId, hash)
     if (cached) {
@@ -297,7 +320,7 @@ export class SummaryService {
     }
 
     const insight = await this.generateInsight(username, context)
-    await this.writeCachedInsight(docId, userId, year, month, hash, insight)
+    await this.writeCachedInsight(docId, userId, period, hash, insight)
     return insight
   }
 
@@ -322,16 +345,15 @@ export class SummaryService {
   private async writeCachedInsight(
     docId: string,
     userId: string,
-    year: number,
-    month: number,
+    period: IResolvedPeriod,
     hash: string,
     insight: { highlight: string[]; recommend: string },
   ): Promise<void> {
     try {
       await db.collection(INSIGHT_CACHE_COLLECTION).doc(docId).set({
         user_id: userId,
-        year,
-        month,
+        start_date: period.startDate,
+        end_date: period.endDate,
         context_hash: hash,
         prompt_version: INSIGHT_PROMPT_VERSION,
         highlight: insight.highlight,
@@ -357,7 +379,7 @@ export class SummaryService {
   ): Promise<{ highlight: string[]; recommend: string }> {
     const fallback = this.buildFallbackInsight(username, context)
     try {
-      const prompt = `ข้อมูลสรุปเดือน ${context.period}:\n${JSON.stringify(context.stats)}`
+      const prompt = `ข้อมูลสรุปช่วง ${context.period}:\n${JSON.stringify(context.stats)}`
       const response = await this.aiService.generate([{ role: 'user', parts: [{ text: prompt }] }], {
         systemInstruction: this.buildSystemInstruction(username),
         temperature: 0.5,
@@ -385,13 +407,13 @@ export class SummaryService {
     const { stats } = context
     const totalMood = Object.values(stats.mood).reduce((a, b) => a + b, 0)
     const highlight: string[] = [
-      `เดือนนี้คุณ ${username} มี todo ${stats.todos.total} รายการ เสร็จไปแล้ว ${stats.todos.completed} รายการ (${stats.todos.completion_rate}%)`,
+      `ช่วงนี้คุณ ${username} มี todo ${stats.todos.total} รายการ เสร็จไปแล้ว ${stats.todos.completed} รายการ (${stats.todos.completion_rate}%)`,
       `มีตารางนัดหมาย ${stats.schedules.total} รายการ`,
       `รายจ่าย ${stats.expenses.total.toLocaleString()} บาท รายรับ ${stats.expenses.income_total.toLocaleString()} บาท (สุทธิ ${stats.expenses.net_total.toLocaleString()} บาท)`,
       `บันทึกอารมณ์ ${totalMood} ครั้ง`,
-      `ข้อมูลเหล่านี้สะท้อนภาพรวมการใช้ชีวิตของคุณ ${username} ในเดือนที่ผ่านมา`,
+      `ข้อมูลเหล่านี้สะท้อนภาพรวมการใช้ชีวิตของคุณ ${username} ในช่วงที่ผ่านมา`,
     ]
-    const recommend = `คุณ ${username} ลองตั้งเป้าหมายเดือนหน้าโดยอ้างอิงจาก insight ข้างต้น เพื่อบาลานซ์งาน เงิน และสุขภาพใจ`
+    const recommend = `คุณ ${username} ลองตั้งเป้าหมายช่วงถัดไปโดยอ้างอิงจาก insight ข้างต้น เพื่อบาลานซ์งาน เงิน และสุขภาพใจ`
     return { highlight, recommend }
   }
 }

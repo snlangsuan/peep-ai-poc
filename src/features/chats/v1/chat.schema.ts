@@ -225,20 +225,31 @@ const baseChatMessageFortuneContentSchema = z.object({
 const baseChatMessageMonthlySummaryContentSchema = z.object({
   type: z.literal('monthly-summary'),
   created_at: z.string(),
-  month: z.string(),
-  year: z.string(),
+  // Language-agnostic period keyword (today | 7d | 30d | this_week | this_month | custom | ...).
+  period: z.string().optional(),
+  // month/year only meaningful for a full-month period; optional otherwise.
+  month: z.string().optional(),
+  year: z.string().optional(),
+  // Period bounds the data was aggregated over (YYYY-MM-DD).
+  start_date: z.string().optional(),
+  end_date: z.string().optional(),
   title: z.string(),
   content: z.object({
+    // Period keyword + bounds (present on new cards; mirror of the envelope).
+    period: z.string().optional(),
+    start_date: z.string().optional(),
+    end_date: z.string().optional(),
     todo_count: z.number(),
     todo_completed: z.number(),
     schedule_count: z.number(),
     expense_count: z.number(),
     expense_total: z.number(),
     // Accounting fields; optional so older stored summary cards stay parseable.
+    // opening/closing are null for non-month periods.
     income_total: z.number().optional(),
     net_total: z.number().optional(),
-    opening_balance: z.number().optional(),
-    closing_balance: z.number().optional(),
+    opening_balance: z.number().nullable().optional(),
+    closing_balance: z.number().nullable().optional(),
     budget: z.number().nullable().optional(),
     mood: z.array(z.object({ id: z.string(), count: z.number() })),
     highlight: z.array(z.string()),
